@@ -80,3 +80,68 @@ def ask_questionnaire() -> dict:
         answers[key] = _ask_yes_no(text)
     answers["notes"] = input("Notes (optional, press Enter to skip): ").strip()
     return answers
+
+
+KEYWORD_MAP: list[tuple[str, bool, list[str]]] = [
+    ("ate_recently", False, ["ארוחות"]),
+    ("carb_count_accurate", False, ["פחמימות"]),
+    ("exercised_last_4h", True, ["פעילות גופנית"]),
+    ("stressed_last_30min", True, ["סטרס", "לחץ"]),
+    ("hot_weather_last_30min", True, ["חום", "מזג אוויר"]),
+    ("correction_dose_last_3h", True, ["תיקון"]),
+    ("phone_sensor_check_last_hour", False, ["טלפון"]),
+    ("accurate_meals_today", False, ["ארוחות"]),
+]
+
+STATE_BY_DIRECTION = {"high": "היפר", "low": "היפו"}
+
+RAG_FILES: dict[str, list[Path]] = {
+    "high": [DATA_DIR / "rag" / "ada_diabetes_association.txt"],
+    "low": [
+        DATA_DIR / "rag" / "ada_diabetes_association.txt",
+        DATA_DIR / "rag" / "niddk_hypoglycemia.txt",
+    ],
+}
+
+
+def _load_table() -> list[dict]:
+    with open(DATA_DIR / "investigation_table.json", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _extract_rag_section(text: str, direction: str) -> str:
+    marker = "## HYPERGLYCEMIA" if direction == "high" else "## HYPOGLYCEMIA"
+    other_marker = "## HYPOGLYCEMIA" if direction == "high" else "## HYPERGLYCEMIA"
+    if marker not in text:
+        return ""
+    section = text.split(marker, 1)[1]
+    if other_marker in section:
+        section = section.split(other_marker, 1)[0]
+    return section.strip()
+
+
+def retrieve_context(anomaly: Anomaly, answers: dict) -> dict:
+    direction = derive_direction(anomaly)
+    if direction is None:
+        return {"table_matches": [], "rag_snippet": ""}
+
+    state = STATE_BY_DIRECTION[direction]
+    table = [row for row in _load_table() if row["state"] == state]
+
+    matches: list[dict] = []
+    for key, trigger, keywords in KEYWORD_MAP:
+        if answers.get(key) != trigger:
+            continue
+        for row in table:
+            haystack = row["category"] + " " + row["cause"]
+            if any(kw in haystack for kw in keywords) and row not in matches:
+                matches.append(row)
+
+    matches = matches[:3]
+
+    rag_snippet = ""
+    for path in RAG_FILES.get(direction, []):
+        text = path.read_text(encoding="utf-8")
+        rag_snippet += _extract_rag_section(text, direction) + "\n\n"
+
+    return {"table_matches": matches, "rag_snippet": rag_snippet.strip()}
