@@ -36,7 +36,8 @@ def get_anomaly(config: SugarBuddyConfig) -> tuple[Anomaly, str]:
     except Exception:
         anomalies = []
     if anomalies:
-        return anomalies[0], "live"
+        directional = [a for a in anomalies if derive_direction(a) is not None]
+        return (directional[0] if directional else anomalies[0]), "live"
     return FALLBACK_ANOMALY, "fallback"
 
 
