@@ -145,3 +145,81 @@ def retrieve_context(anomaly: Anomaly, answers: dict) -> dict:
         rag_snippet += _extract_rag_section(text, direction) + "\n\n"
 
     return {"table_matches": matches, "rag_snippet": rag_snippet.strip()}
+
+
+SYSTEM_PROMPT = (
+    "You are a diabetes event investigation assistant for a parent-teen pair. "
+    "Given a CGM anomaly, structured yes/no answers, relevant cause table rows, "
+    "and medical reference text, return ONLY a JSON object with two keys: "
+    "parent_summary (evidence-based possible contributing factors with confidence "
+    "levels, for the parent) and teen_guidance (short, concrete, actionable next "
+    "steps for the teen). Do not diagnose."
+)
+
+
+def _build_user_prompt(anomaly: Anomaly, answers: dict, context: dict) -> str:
+    payload = {
+        "anomaly": {
+            "type": anomaly.type.value,
+            "severity": anomaly.severity.value,
+            "message": anomaly.message,
+            "timestamp": anomaly.timestamp.isoformat(),
+            "details": anomaly.details,
+        },
+        "questionnaire_answers": answers,
+        "candidate_causes": context["table_matches"],
+        "reference_text": context["rag_snippet"],
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def build_agent_step(anomaly: Anomaly, answers: dict, context: dict) -> dict:
+    return {
+        "module": "InvestigationAgent",
+        "prompt": {
+            "system_prompt": SYSTEM_PROMPT,
+            "user_prompt": _build_user_prompt(anomaly, answers, context),
+        },
+        "response": None,
+    }
+
+
+def print_agent_stub(step: dict) -> None:
+    print("\n=== Agent step (TODO — not calling the LLM yet) ===")
+    print(json.dumps(step, ensure_ascii=False, indent=2))
+
+
+def save_record(anomaly: Anomaly, source: str, answers: dict, context: dict, step: dict) -> None:
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "anomaly": {
+            "type": anomaly.type.value,
+            "severity": anomaly.severity.value,
+            "message": anomaly.message,
+            "details": anomaly.details,
+            "source": source,
+        },
+        "questionnaire": answers,
+        "context": context,
+        "step": step,
+    }
+    out_path = Path(__file__).parent / "local_run_output.json"
+    out_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\nSaved record to {out_path}")
+
+
+def main() -> None:
+    config = SugarBuddyConfig(nightscout_base_url=NIGHTSCOUT_TEST_URL)
+    anomaly, source = get_anomaly(config)
+    print(f"\nAnomaly ({source}): [{anomaly.severity.value}] {anomaly.message}")
+
+    answers = ask_questionnaire()
+    context = retrieve_context(anomaly, answers)
+    step = build_agent_step(anomaly, answers, context)
+
+    print_agent_stub(step)
+    save_record(anomaly, source, answers, context, step)
+
+
+if __name__ == "__main__":
+    main()
