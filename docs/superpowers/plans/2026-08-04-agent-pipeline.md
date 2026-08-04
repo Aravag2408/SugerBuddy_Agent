@@ -355,7 +355,9 @@ git commit -m "Add conversation_state module for stateless multi-turn tracking"
 - Test: `tests/test_questionnaire.py`
 
 **Interfaces:**
-- Consumes: `conversation_state.build_marker`, `errors.PipelineError`.
+- Consumes: `conversation_state.build_marker`, `conversation_state.extract_conversation_state`
+  (test-only, to verify the marker round-trip rather than asserting on its now-base64-encoded
+  literal text), `errors.PipelineError`.
 - Produces: `questionnaire.QUESTIONS: list[tuple[str, str]]` (10 entries),
   `questionnaire.format_questionnaire_prompt(anomaly: dict) -> str`,
   `questionnaire.parse_answers(reply_text: str) -> tuple[dict[str, bool], str]`.
@@ -366,6 +368,7 @@ git commit -m "Add conversation_state module for stateless multi-turn tracking"
 # tests/test_questionnaire.py
 import pytest
 from questionnaire import QUESTIONS, format_questionnaire_prompt, parse_answers
+from conversation_state import extract_conversation_state
 from errors import PipelineError
 
 ANOMALY = {"type": "glucose_extreme", "severity": "urgent", "direction": "high",
@@ -384,7 +387,14 @@ def test_format_questionnaire_prompt_includes_all_questions_and_marker():
     for i, (_, question_text) in enumerate(QUESTIONS, start=1):
         assert f"{i}. {question_text}" in text
     assert "SUGARBUDDY_CONTEXT" in text
-    assert '"stage": "questionnaire_sent"' in text
+
+    # conversation_state.build_marker base64-encodes the payload (fixed during
+    # Task 2's review to avoid delimiter collisions), so assert via a real
+    # round-trip rather than checking for literal JSON text in the marker.
+    state = extract_conversation_state(text)
+    assert state is not None
+    assert state.stage == "questionnaire_sent"
+    assert state.anomaly == ANOMALY
 
 
 def test_parse_answers_all_yes_english():
@@ -1669,7 +1679,7 @@ from unittest.mock import MagicMock
 
 import agent_pipeline
 from agent_pipeline import PipelineClients, run_pipeline
-from conversation_state import build_marker
+from conversation_state import build_marker, extract_conversation_state
 
 ANOMALY = {"type": "glucose_extreme", "severity": "urgent", "direction": "high", "message": "m", "details": {}}
 ALL_TEN_ANSWERS = {
@@ -1750,8 +1760,14 @@ def test_turn2_with_followup_returns_question_not_summary(monkeypatch):
     result = run_pipeline(prompt, clients)
 
     assert "כמה זמן אחרי האוכל מדדת?" in result["response"]
-    assert "followup_sent" in result["response"]
     assert [s["module"] for s in result["steps"]] == ["ReAct Agent"]
+
+    # conversation_state.build_marker base64-encodes its payload (fixed during
+    # Task 2's review), so verify the embedded stage via a real round-trip
+    # rather than checking for literal marker text in the response.
+    followup_state = extract_conversation_state(result["response"])
+    assert followup_state is not None
+    assert followup_state.stage == "followup_sent"
 
 
 def test_turn3_after_followup_returns_final_summary(monkeypatch):

@@ -1,2 +1,3 @@
 local_run_output.json
 .env
+__pycache__/
