@@ -35,19 +35,21 @@ def format_questionnaire_prompt(anomaly: dict) -> str:
 
 
 def parse_answers(reply_text: str) -> tuple[dict[str, bool], str]:
-    matches = list(_ANSWER_LINE.finditer(reply_text))
-
     found: dict[int, bool] = {}
-    for m in matches:
+    last_end = 0
+    for m in _ANSWER_LINE.finditer(reply_text):
         index = int(m.group(1))
-        if 1 <= index <= len(QUESTIONS):
+        if 1 <= index <= len(QUESTIONS) and index not in found:
             found[index] = m.group(2).strip().lower() in _YES_VALUES
+            last_end = m.end()
+            if len(found) == len(QUESTIONS):
+                break
 
     if len(found) < len(QUESTIONS):
         raise PipelineError(
             "could not parse all questionnaire answers; reply as a numbered Y/N list"
         )
 
-    answers = {QUESTIONS[i - 1][0]: found[i] for i in found}
-    notes = reply_text[matches[-1].end():].strip() if matches else ""
+    answers = {QUESTIONS[i - 1][0]: found[i] for i in range(1, len(QUESTIONS) + 1)}
+    notes = reply_text[last_end:].strip()
     return answers, notes

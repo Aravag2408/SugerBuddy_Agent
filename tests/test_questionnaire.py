@@ -49,3 +49,16 @@ def test_parse_answers_raises_when_fewer_than_ten():
     reply = "1. Y\n2. N\n3. Y"
     with pytest.raises(PipelineError, match="numbered Y/N list"):
         parse_answers(reply)
+
+
+def test_parse_answers_notes_with_spurious_answer_pattern():
+    # Regression test: notes containing a substring matching the answer-line
+    # pattern (e.g. "6. לא") must not overwrite real answers or truncate notes.
+    reply = "1. כן\n2. לא\n3. Y\n4. N\n5. Yes\n6. Yes\n7. כן\n8. לא\n9. Y\n10. N\nנ.ב. קמתי בשעה 6. לא ישנתי טוב בכלל"
+    answers, notes = parse_answers(reply)
+    # Question 6 (hot_weather_last_30min) should remain True from answer "6. Yes",
+    # not overwritten by spurious "6. לא" (False) in the notes.
+    assert answers["hot_weather_last_30min"] is True
+    # Notes should NOT be truncated at the spurious "6. לא" inside the actual notes
+    assert notes == "נ.ב. קמתי בשעה 6. לא ישנתי טוב בכלל"
+    assert "קמתי בשעה" in notes  # Full notes preserved
