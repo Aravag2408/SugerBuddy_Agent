@@ -62,4 +62,5 @@ def test_forced_final_ignores_disobedient_followup_request():
     result, step = run_react_agent(ANOMALY, ANSWERS, "", CONTEXT, client, allow_followup=False)
 
     assert result["need_more_info"] is False
+    assert result["followup_question"] is None
     assert result["findings"] == []
