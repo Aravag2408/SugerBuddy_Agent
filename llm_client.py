@@ -42,5 +42,8 @@ def chat_json(client, module: str, system_prompt: str, user_prompt: str) -> tupl
 
 
 def embed_text(client, text: str) -> list[float]:
-    response = client.embeddings.create(model=config.EMBED_MODEL, input=text)
-    return response.data[0].embedding
+    try:
+        response = client.embeddings.create(model=config.EMBED_MODEL, input=text)
+        return response.data[0].embedding
+    except Exception as e:
+        raise PipelineError(f"embedding call failed: {e}") from e

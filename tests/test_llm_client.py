@@ -63,3 +63,10 @@ def test_embed_text_returns_vector():
 
     assert vector == [0.1, 0.2, 0.3]
     client.embeddings.create.assert_called_once_with(model=config.EMBED_MODEL, input="some text")
+
+
+def test_embed_text_raises_pipeline_error_on_api_failure():
+    client = MagicMock()
+    client.embeddings.create.side_effect = RuntimeError("connection reset")
+    with pytest.raises(PipelineError, match="embedding call failed"):
+        llm_client.embed_text(client, "some text")
