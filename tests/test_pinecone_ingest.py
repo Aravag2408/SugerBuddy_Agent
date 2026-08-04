@@ -44,3 +44,29 @@ def test_ingest_reference_upserts_chunks_with_direction_metadata(monkeypatch, tm
     assert kwargs["namespace"] == "reference"
     directions = {v["metadata"]["direction"] for v in kwargs["vectors"]}
     assert directions == {"high", "low"}
+
+
+def test_ingest_reference_skips_empty_chunks(monkeypatch, tmp_path):
+    """Test that chunks with empty extracted text are skipped."""
+    ada_dir = tmp_path / "rag"
+    ada_dir.mkdir()
+    # ADA file with only HYPERGLYCEMIA, missing HYPOGLYCEMIA section
+    ada_file = ada_dir / "ada_diabetes_association.txt"
+    ada_file.write_text("## HYPERGLYCEMIA\nhigh info only", encoding="utf-8")
+    niddk_file = ada_dir / "niddk_hypoglycemia.txt"
+    niddk_file.write_text("niddk low info", encoding="utf-8")
+
+    monkeypatch.setattr(pinecone_ingest, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(pinecone_ingest, "embed_text", lambda client, text: [0.1, 0.2, 0.3])
+    fake_index = MagicMock()
+
+    count = pinecone_ingest.ingest_reference(fake_index, embed_client=object())
+
+    # Should only have 2 chunks: high from ADA (HYPOGLYCEMIA section is missing),
+    # low from NIDDK (ADA's low section is empty and skipped)
+    assert count == 2
+    kwargs = fake_index.upsert.call_args.kwargs
+    assert len(kwargs["vectors"]) == 2
+    assert kwargs["namespace"] == "reference"
+    directions = {v["metadata"]["direction"] for v in kwargs["vectors"]}
+    assert directions == {"high", "low"}
