@@ -77,13 +77,12 @@ def test_build_and_extract_with_field_containing_marker_delimiter():
 
 def test_extract_returns_none_on_non_dict_json_payload():
     """Regression test: valid JSON that is not a dict should return None, not crash."""
-    # Marker body is valid JSON but decodes to a non-dict (null in this case)
-    prompt = "<!-- SUGARBUDDY_CONTEXT: null -->\nreply"
-    assert extract_conversation_state(prompt) is None
+    import base64
+    import json
 
-    # Also test other valid JSON non-dict types
-    prompt = "<!-- SUGARBUDDY_CONTEXT: 42 -->\nreply"
-    assert extract_conversation_state(prompt) is None
-
-    prompt = "<!-- SUGARBUDDY_CONTEXT: [1, 2, 3] -->\nreply"
-    assert extract_conversation_state(prompt) is None
+    # Build markers with base64-encoded valid JSON that is not a dict.
+    # This exercises the isinstance(payload, dict) guard after successful decoding.
+    for value in (None, 42, [1, 2, 3]):
+        encoded = base64.b64encode(json.dumps(value).encode()).decode()
+        prompt = f"<!-- SUGARBUDDY_CONTEXT: {encoded} -->\nsome reply"
+        assert extract_conversation_state(prompt) is None
