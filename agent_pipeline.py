@@ -114,3 +114,40 @@ def run_react_agent(
         }
 
     return parsed, step
+
+
+CONFIDENCE_SYSTEM_PROMPT = (
+    "You score confidence for each candidate finding about what caused a glucose "
+    "anomaly. Given the anomaly, questionnaire answers, and a list of candidate "
+    "findings with their supporting evidence, return ONLY JSON: {\"findings\": "
+    "[{\"cause\": str, \"evidence\": str, \"confidence\": \"low\"|\"medium\"|\"high\", "
+    "\"rationale\": str}]}, preserving each finding's cause/evidence and adding "
+    "confidence and a one-sentence rationale. Base confidence on how directly the "
+    "evidence supports each cause."
+)
+
+PARENT_SUMMARY_SYSTEM_PROMPT = (
+    "You write a parent-facing summary of a glucose anomaly investigation. Given the "
+    "anomaly, the teen's questionnaire answers, and confidence-scored candidate "
+    "findings, return ONLY JSON: {\"parent_summary\": str}. parent_summary must read "
+    "as: a 2-3 sentence recap of the event and what the teen reported, then up to "
+    "three possible reasons ordered by confidence (each stated with its confidence "
+    "level), then one practical suggestion. Do not diagnose; present reasons as "
+    "possibilities, not conclusions."
+)
+
+
+def run_confidence_classification(anomaly, answers, findings, llm_client) -> tuple[dict, dict]:
+    user_prompt = json.dumps(
+        {"anomaly": anomaly, "questionnaire_answers": answers, "findings": findings},
+        ensure_ascii=False, indent=2,
+    )
+    return chat_json(llm_client, "Confidence Classification", CONFIDENCE_SYSTEM_PROMPT, user_prompt)
+
+
+def run_parent_summary(anomaly, answers, findings, llm_client) -> tuple[dict, dict]:
+    user_prompt = json.dumps(
+        {"anomaly": anomaly, "questionnaire_answers": answers, "findings": findings},
+        ensure_ascii=False, indent=2,
+    )
+    return chat_json(llm_client, "Parent Summary", PARENT_SUMMARY_SYSTEM_PROMPT, user_prompt)
