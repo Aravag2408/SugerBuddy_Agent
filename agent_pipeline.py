@@ -61,3 +61,56 @@ def parse_cgm_event(prompt: str, llm_client) -> tuple[dict, list[dict]]:
         raise PipelineError("not a recognizable CGM event description")
     parsed.setdefault("details", {})
     return parsed, [step]
+
+
+REACT_SYSTEM_PROMPT_BASE = (
+    "You are a diabetes event investigation assistant for a parent-teen pair. Given a "
+    "CGM anomaly, structured yes/no answers with free-text notes, retrieved "
+    "candidate-cause table rows, and medical reference text, reason step by step. If "
+    "one additional piece of information from the teen would meaningfully change your "
+    "findings, return ONLY JSON: {\"need_more_info\": true, \"followup_question\": "
+    "\"<your question, in Hebrew>\", \"findings\": null}. Otherwise return ONLY JSON: "
+    "{\"need_more_info\": false, \"followup_question\": null, \"findings\": "
+    "[{\"cause\": str, \"evidence\": str, \"source\": \"table\"|\"reference\"|\"answers\"}]}. "
+    "List up to 3 findings ordered by plausibility. Do not diagnose or invent facts not "
+    "supported by the given context."
+)
+
+REACT_FORCED_FINAL_SUFFIX = (
+    " You must set need_more_info to false and provide findings now — no further "
+    "follow-up is allowed."
+)
+
+
+def _build_react_user_prompt(anomaly, answers, notes, context, followup=None) -> str:
+    payload = {
+        "anomaly": anomaly,
+        "questionnaire_answers": answers,
+        "notes": notes,
+        "candidate_causes": context["table_matches"],
+        "reference_text": context["rag_snippet"],
+    }
+    if followup:
+        payload["followup_question"] = followup["question"]
+        payload["followup_answer"] = followup["answer"]
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def run_react_agent(
+    anomaly, answers, notes, context, llm_client, followup=None, allow_followup=True
+) -> tuple[dict, dict]:
+    system_prompt = REACT_SYSTEM_PROMPT_BASE
+    if not allow_followup:
+        system_prompt += REACT_FORCED_FINAL_SUFFIX
+
+    user_prompt = _build_react_user_prompt(anomaly, answers, notes, context, followup)
+    parsed, step = chat_json(llm_client, "ReAct Agent", system_prompt, user_prompt)
+
+    if not allow_followup and parsed.get("need_more_info"):
+        parsed = {
+            "need_more_info": False,
+            "followup_question": None,
+            "findings": parsed.get("findings") or [],
+        }
+
+    return parsed, step
