@@ -1,4 +1,5 @@
 from __future__ import annotations
+import base64
 import json
 import re
 from dataclasses import dataclass
@@ -24,7 +25,9 @@ class ConversationState:
 
 def build_marker(stage: str, **fields) -> str:
     payload = {"stage": stage, **fields}
-    return f"{MARKER_PREFIX}{json.dumps(payload, ensure_ascii=False)}{MARKER_SUFFIX}"
+    json_bytes = json.dumps(payload, ensure_ascii=False).encode()
+    encoded = base64.b64encode(json_bytes).decode()
+    return f"{MARKER_PREFIX}{encoded}{MARKER_SUFFIX}"
 
 
 def extract_conversation_state(prompt: str) -> ConversationState | None:
@@ -34,8 +37,13 @@ def extract_conversation_state(prompt: str) -> ConversationState | None:
 
     last_match = matches[-1]
     try:
-        payload = json.loads(last_match.group(1))
-    except json.JSONDecodeError:
+        encoded_payload = last_match.group(1)
+        json_bytes = base64.b64decode(encoded_payload)
+        payload = json.loads(json_bytes.decode())
+    except (base64.binascii.Error, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+    if not isinstance(payload, dict):
         return None
 
     return ConversationState(
