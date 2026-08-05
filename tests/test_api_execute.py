@@ -82,3 +82,33 @@ def test_execute_non_string_prompt_returns_error_shape():
     body = response.json()
     assert body["status"] == "error"
     assert body["error"] == "prompt is required"
+
+
+def test_execute_no_body_returns_error_shape_not_500():
+    response = client.post("/api/execute")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "status": "error",
+        "error": "prompt is required",
+        "response": None,
+        "steps": [],
+    }
+
+
+def test_execute_malformed_json_body_returns_error_shape_not_500():
+    response = client.post(
+        "/api/execute",
+        content="not json",
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "status": "error",
+        "error": "prompt is required",
+        "response": None,
+        "steps": [],
+    }

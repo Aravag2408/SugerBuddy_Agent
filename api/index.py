@@ -452,7 +452,11 @@ def _get_clients() -> PipelineClients:
 
 @app.post("/api/execute")
 async def execute(request: Request):
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"status": "error", "error": "prompt is required", "response": None, "steps": []})
+
     prompt = body.get("prompt") if isinstance(body, dict) else None
 
     if not isinstance(prompt, str) or not prompt.strip():
@@ -461,12 +465,14 @@ async def execute(request: Request):
     try:
         clients = _get_clients()
         result = run_pipeline(prompt, clients)
+        response_text = result["response"]
+        steps = result["steps"]
     except PipelineError as e:
         return JSONResponse({"status": "error", "error": str(e), "response": None, "steps": []})
     except Exception as e:
         return JSONResponse({"status": "error", "error": f"unexpected error: {e}", "response": None, "steps": []})
 
-    log_execution(prompt, result["response"], result["steps"])
+    log_execution(prompt, response_text, steps)
     return JSONResponse(
-        {"status": "ok", "error": None, "response": result["response"], "steps": result["steps"]}
+        {"status": "ok", "error": None, "response": response_text, "steps": steps}
     )
