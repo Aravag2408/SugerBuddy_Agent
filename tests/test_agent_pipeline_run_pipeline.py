@@ -122,3 +122,69 @@ def test_turn3_after_followup_returns_final_summary(monkeypatch):
     assert [s["module"] for s in result["steps"]] == [
         "ReAct Agent", "Confidence Classification", "Parent Summary",
     ]
+
+
+def test_turn2_uses_pinecone_when_both_clients_are_set(monkeypatch):
+    pinecone_mock = MagicMock(return_value={"table_matches": [], "rag_snippet": ""})
+    keyword_mock = MagicMock(side_effect=AssertionError("keyword fallback should not be used"))
+    monkeypatch.setattr(agent_pipeline, "retrieve_context_pinecone", pinecone_mock)
+    monkeypatch.setattr(agent_pipeline, "retrieve_context_keyword", keyword_mock)
+
+    react_response = json.dumps({
+        "need_more_info": False, "followup_question": None,
+        "findings": [{"cause": "exercise", "evidence": "e", "source": "answers"}],
+    })
+    confidence_response = json.dumps({
+        "findings": [{"cause": "exercise", "evidence": "e", "confidence": "medium", "rationale": "r"}],
+    })
+    summary_response = json.dumps({"parent_summary": "Summary via pinecone path."})
+    client = _client_with_responses(react_response, confidence_response, summary_response)
+
+    fake_pinecone_index = MagicMock(name="pinecone_index")
+    fake_embed_client = MagicMock(name="embed_client")
+    clients = PipelineClients(
+        llm_client=client, pinecone_index=fake_pinecone_index, embed_client=fake_embed_client,
+    )
+
+    marker = build_marker("questionnaire_sent", anomaly=ANOMALY)
+    prompt = f"{marker}\n{_ten_answers_reply()}"
+
+    result = run_pipeline(prompt, clients)
+
+    assert pinecone_mock.called
+    assert pinecone_mock.call_args.args[2:] == (fake_embed_client, fake_pinecone_index)
+    assert not keyword_mock.called
+    assert result["response"] == "Summary via pinecone path."
+
+
+def test_turn2_falls_back_to_keyword_when_only_one_client_is_set(monkeypatch):
+    pinecone_mock = MagicMock(
+        side_effect=AssertionError("pinecone should not be used when embed_client is None")
+    )
+    keyword_mock = MagicMock(return_value={"table_matches": [], "rag_snippet": ""})
+    monkeypatch.setattr(agent_pipeline, "retrieve_context_pinecone", pinecone_mock)
+    monkeypatch.setattr(agent_pipeline, "retrieve_context_keyword", keyword_mock)
+
+    react_response = json.dumps({
+        "need_more_info": False, "followup_question": None,
+        "findings": [{"cause": "exercise", "evidence": "e", "source": "answers"}],
+    })
+    confidence_response = json.dumps({
+        "findings": [{"cause": "exercise", "evidence": "e", "confidence": "medium", "rationale": "r"}],
+    })
+    summary_response = json.dumps({"parent_summary": "Summary via keyword fallback."})
+    client = _client_with_responses(react_response, confidence_response, summary_response)
+
+    # pinecone_index is set but embed_client is left at its None default — dispatch
+    # must require BOTH to be set, not just one, before using the Pinecone path.
+    fake_pinecone_index = MagicMock(name="pinecone_index")
+    clients = PipelineClients(llm_client=client, pinecone_index=fake_pinecone_index)
+
+    marker = build_marker("questionnaire_sent", anomaly=ANOMALY)
+    prompt = f"{marker}\n{_ten_answers_reply()}"
+
+    result = run_pipeline(prompt, clients)
+
+    assert keyword_mock.called
+    assert not pinecone_mock.called
+    assert result["response"] == "Summary via keyword fallback."
