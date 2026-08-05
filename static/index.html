@@ -81,15 +81,14 @@
     const userText = inputBox.value.trim();
     if (!userText) return;
 
-    transcript = transcript ? transcript + "\n" + userText : userText;
-    inputBox.value = "";
+    const candidateTranscript = transcript ? transcript + "\n" + userText : userText;
     runButton.disabled = true;
 
     try {
       const res = await fetch("/api/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: transcript }),
+        body: JSON.stringify({ prompt: candidateTranscript }),
       });
       const data = await res.json();
 
@@ -99,6 +98,9 @@
         runButton.disabled = false;
         return;
       }
+
+      transcript = candidateTranscript;
+      inputBox.value = "";
 
       renderTurn(data.response, data.steps);
       transcript = transcript + "\n" + data.response;
