@@ -1,6 +1,10 @@
 """Non-blocking audit log of /api/execute calls. Logging failures must
 never propagate to the caller — this is a side effect, not part of the
 pipeline's contract.
+
+SUPABASE_KEY must be the service-role key and must stay server-side only:
+execution_log has row level security enabled with a service-role-only policy
+(see supabase/migration.sql), so the anon/public key cannot insert here.
 """
 from __future__ import annotations
 import json

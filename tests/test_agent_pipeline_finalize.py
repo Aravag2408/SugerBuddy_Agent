@@ -1,7 +1,15 @@
 import json
 from unittest.mock import MagicMock
 
-from agent_pipeline import run_confidence_classification, run_parent_summary
+import pytest
+
+from agent_pipeline import (
+    CONFIDENCE_SYSTEM_PROMPT,
+    PARENT_SUMMARY_SYSTEM_PROMPT,
+    REACT_SYSTEM_PROMPT_BASE,
+    run_confidence_classification,
+    run_parent_summary,
+)
 
 ANOMALY = {"type": "glucose_extreme", "severity": "urgent", "direction": "high", "message": "m", "details": {}}
 ANSWERS = {"exercised_last_4h": True}
@@ -49,3 +57,14 @@ def test_run_parent_summary_returns_summary_text():
 
     assert result["parent_summary"].startswith("Event recap.")
     assert step["module"] == "Parent Summary"
+
+
+@pytest.mark.parametrize(
+    "system_prompt",
+    [REACT_SYSTEM_PROMPT_BASE, CONFIDENCE_SYSTEM_PROMPT, PARENT_SUMMARY_SYSTEM_PROMPT],
+    ids=["react", "confidence", "parent_summary"],
+)
+def test_every_user_facing_system_prompt_specifies_hebrew(system_prompt):
+    """Every stage that emits text a Hebrew-speaking teen or parent will read must
+    say so — parent_summary in particular is the whole user-visible deliverable."""
+    assert "Hebrew" in system_prompt

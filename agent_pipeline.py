@@ -123,7 +123,8 @@ CONFIDENCE_SYSTEM_PROMPT = (
     "[{\"cause\": str, \"evidence\": str, \"confidence\": \"low\"|\"medium\"|\"high\", "
     "\"rationale\": str}]}, preserving each finding's cause/evidence and adding "
     "confidence and a one-sentence rationale. Base confidence on how directly the "
-    "evidence supports each cause."
+    "evidence supports each cause. Write every rationale in Hebrew; the confidence "
+    "values themselves stay as the literal English strings low/medium/high."
 )
 
 PARENT_SUMMARY_SYSTEM_PROMPT = (
@@ -132,7 +133,8 @@ PARENT_SUMMARY_SYSTEM_PROMPT = (
     "findings, return ONLY JSON: {\"parent_summary\": str}. parent_summary must read "
     "as: a 2-3 sentence recap of the event and what the teen reported, then up to "
     "three possible reasons ordered by confidence (each stated with its confidence "
-    "level), then one practical suggestion. Do not diagnose; present reasons as "
+    "level), then one practical suggestion. Write parent_summary in Hebrew — it is "
+    "read directly by a Hebrew-speaking parent. Do not diagnose; present reasons as "
     "possibilities, not conclusions."
 )
 
@@ -179,10 +181,13 @@ def _finalize(anomaly, answers, findings, clients: PipelineClients, prior_steps:
         anomaly, answers, findings, clients.llm_client
     )
     summary_result, summary_step = run_parent_summary(
-        anomaly, answers, confidence_result["findings"], clients.llm_client
+        anomaly, answers, confidence_result.get("findings") or [], clients.llm_client
     )
+    parent_summary = summary_result.get("parent_summary")
+    if not isinstance(parent_summary, str) or not parent_summary.strip():
+        raise PipelineError("Parent Summary did not return the expected text")
     return {
-        "response": summary_result["parent_summary"],
+        "response": parent_summary,
         "steps": prior_steps + [confidence_step, summary_step],
     }
 
@@ -194,26 +199,38 @@ def run_pipeline(prompt: str, clients: PipelineClients) -> dict:
         anomaly, steps = parse_cgm_event(prompt, clients.llm_client)
         return {"response": format_questionnaire_prompt(anomaly), "steps": steps}
 
+    # The marker is client-held and comes back unvalidated on turns 2 and 3, so
+    # re-validate the anomaly it carries before it reaches retrieval (where an
+    # unexpected direction would otherwise raise a bare KeyError).
+    if not _valid_anomaly_dict(state.anomaly):
+        raise PipelineError("conversation state carries an invalid anomaly")
+
     if state.stage == "questionnaire_sent":
         answers, notes = parse_answers(state.reply_text)
         context = _retrieve_context(state.anomaly, answers, clients)
         result, react_step = run_react_agent(state.anomaly, answers, notes, context, clients.llm_client)
 
         if result.get("need_more_info"):
+            followup_question = result.get("followup_question")
+            if not isinstance(followup_question, str) or not followup_question.strip():
+                raise PipelineError(
+                    "ReAct Agent requested a follow-up but did not provide a question"
+                )
             marker = build_marker(
                 "followup_sent", anomaly=state.anomaly, answers=answers, notes=notes,
-                followup_question=result["followup_question"],
+                followup_question=followup_question,
             )
-            return {"response": f"{result['followup_question']}\n\n{marker}", "steps": [react_step]}
+            return {"response": f"{followup_question}\n\n{marker}", "steps": [react_step]}
 
-        return _finalize(state.anomaly, answers, result["findings"], clients, [react_step])
+        return _finalize(state.anomaly, answers, result.get("findings") or [], clients, [react_step])
 
     # state.stage == "followup_sent"
     followup_answer = state.reply_text
-    context = _retrieve_context(state.anomaly, state.answers, clients)
+    answers = state.answers or {}
+    context = _retrieve_context(state.anomaly, answers, clients)
     result, react_step = run_react_agent(
-        state.anomaly, state.answers, state.notes, context, clients.llm_client,
+        state.anomaly, answers, state.notes, context, clients.llm_client,
         followup={"question": state.followup_question, "answer": followup_answer},
         allow_followup=False,
     )
-    return _finalize(state.anomaly, state.answers, result["findings"], clients, [react_step])
+    return _finalize(state.anomaly, answers, result.get("findings") or [], clients, [react_step])

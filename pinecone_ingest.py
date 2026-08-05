@@ -1,6 +1,6 @@
-"""One-time script: embed investigation_table.json + RAG text chunks into
-Pinecone. Run manually after LLMod.ai and Pinecone credentials are set in
-.env:
+"""One-time script: create the Pinecone index if it does not exist yet, then
+embed investigation_table.json + RAG text chunks into it. Run manually after
+LLMod.ai and Pinecone credentials are set in .env:
 
     python pinecone_ingest.py
 
@@ -9,8 +9,43 @@ this is not part of the request-time path.
 """
 from __future__ import annotations
 
+from pinecone import Pinecone, ServerlessSpec
+
+import config
 from llm_client import embed_text, get_llm_client
 from retrieval import DATA_DIR, extract_rag_section, get_pinecone_index, load_table
+
+# text-embedding-3-small emits 1536-dimensional vectors.
+EMBED_DIMENSION = 1536
+PINECONE_METRIC = "cosine"
+PINECONE_CLOUD = "aws"
+PINECONE_REGION = "us-east-1"
+
+# Pinecone caps a single upsert request at ~2MB; 50 vectors of 1536 floats
+# stays comfortably under it.
+UPSERT_BATCH_SIZE = 50
+
+
+def ensure_index_exists() -> None:
+    """Create the configured Pinecone index if it does not exist yet.
+
+    `retrieval.get_pinecone_index()` only opens an already-existing index, so
+    creation lives here with the rest of the one-time setup concerns.
+    """
+    pc = Pinecone(api_key=config.require(config.PINECONE_API_KEY, "PINECONE_API_KEY"))
+    if config.PINECONE_INDEX_NAME in pc.list_indexes().names():
+        return
+    pc.create_index(
+        name=config.PINECONE_INDEX_NAME,
+        dimension=EMBED_DIMENSION,
+        metric=PINECONE_METRIC,
+        spec=ServerlessSpec(cloud=PINECONE_CLOUD, region=PINECONE_REGION),
+    )
+
+
+def _upsert_in_batches(index, vectors: list[dict], namespace: str) -> None:
+    for start in range(0, len(vectors), UPSERT_BATCH_SIZE):
+        index.upsert(vectors=vectors[start:start + UPSERT_BATCH_SIZE], namespace=namespace)
 
 
 def ingest_causes(index, embed_client) -> int:
@@ -30,7 +65,7 @@ def ingest_causes(index, embed_client) -> int:
                 "time_to_effect": row.get("time_to_effect", ""),
             },
         })
-    index.upsert(vectors=vectors, namespace="causes")
+    _upsert_in_batches(index, vectors, "causes")
     return len(vectors)
 
 
@@ -54,12 +89,13 @@ def ingest_reference(index, embed_client) -> int:
             "values": vector,
             "metadata": {"direction": direction, "source_file": source_file, "text": text},
         })
-    index.upsert(vectors=vectors, namespace="reference")
+    _upsert_in_batches(index, vectors, "reference")
     return len(vectors)
 
 
 def main() -> None:
     embed_client = get_llm_client()
+    ensure_index_exists()
     index = get_pinecone_index()
     causes_count = ingest_causes(index, embed_client)
     reference_count = ingest_reference(index, embed_client)

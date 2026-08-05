@@ -48,6 +48,28 @@ def test_chat_json_raises_pipeline_error_on_invalid_json():
         llm_client.chat_json(client, "CGM Event", "sys", "user")
 
 
+def test_chat_json_raises_pipeline_error_on_none_content():
+    """Azure content filtering (plausible on teen-health text) returns
+    message.content=None; json.loads(None) would raise an uncaught TypeError."""
+    client = _fake_chat_client(None)
+    with pytest.raises(PipelineError, match="CGM Event returned an empty response"):
+        llm_client.chat_json(client, "CGM Event", "sys", "user")
+
+
+def test_chat_json_raises_pipeline_error_on_empty_string_content():
+    client = _fake_chat_client("")
+    with pytest.raises(PipelineError, match="returned an empty response"):
+        llm_client.chat_json(client, "CGM Event", "sys", "user")
+
+
+def test_chat_json_raises_pipeline_error_on_non_object_json():
+    """A JSON array/scalar parses fine but would AttributeError later at a
+    .get(...) call site, far from the actual cause."""
+    client = _fake_chat_client("[1, 2, 3]")
+    with pytest.raises(PipelineError, match="CGM Event returned non-object JSON"):
+        llm_client.chat_json(client, "CGM Event", "sys", "user")
+
+
 def test_chat_json_raises_pipeline_error_on_api_failure():
     client = MagicMock()
     client.chat.completions.create.side_effect = RuntimeError("connection reset")

@@ -28,10 +28,19 @@ def chat_json(client, module: str, system_prompt: str, user_prompt: str) -> tupl
     except Exception as e:
         raise PipelineError(f"{module} call failed: {e}") from e
 
+    # message.content is None when the provider blocks the response (content
+    # filtering) or stops for a non-"stop" reason — json.loads(None) would raise
+    # TypeError, which no caller in this pipeline is prepared to catch.
+    if not raw:
+        raise PipelineError(f"{module} returned an empty response")
+
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as e:
         raise PipelineError(f"{module} returned invalid JSON: {e}") from e
+
+    if not isinstance(parsed, dict):
+        raise PipelineError(f"{module} returned non-object JSON")
 
     step = {
         "module": module,

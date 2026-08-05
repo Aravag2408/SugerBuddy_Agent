@@ -64,3 +64,21 @@ def test_forced_final_ignores_disobedient_followup_request():
     assert result["need_more_info"] is False
     assert result["followup_question"] is None
     assert result["findings"] == []
+
+
+def test_forced_final_preserves_findings_when_model_also_asks_for_followup():
+    """The override must drop the disallowed follow-up request without discarding
+    findings the model provided alongside it."""
+    findings = [
+        {"cause": "exercise", "evidence": "answered yes", "source": "answers"},
+        {"cause": "missed bolus", "evidence": "table row", "source": "table"},
+    ]
+    client = _fake_llm_client(json.dumps({
+        "need_more_info": True, "followup_question": "one more?", "findings": findings,
+    }))
+
+    result, step = run_react_agent(ANOMALY, ANSWERS, "", CONTEXT, client, allow_followup=False)
+
+    assert result["need_more_info"] is False
+    assert result["followup_question"] is None
+    assert result["findings"] == findings
