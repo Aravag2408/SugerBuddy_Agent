@@ -34,8 +34,9 @@ def test_run_confidence_classification_prompt_excludes_raw_context():
     run_confidence_classification(ANOMALY, ANSWERS, FINDINGS, client)
 
     user_prompt = client.chat.completions.create.call_args.kwargs["messages"][1]["content"]
-    assert "candidate_causes" not in user_prompt
-    assert "reference_text" not in user_prompt
+    prompt_dict = json.loads(user_prompt)
+    # Positive exhaustive check: prompt contains exactly these top-level keys and no others
+    assert set(prompt_dict.keys()) == {"anomaly", "questionnaire_answers", "findings"}
 
 
 def test_run_parent_summary_returns_summary_text():
