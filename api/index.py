@@ -427,3 +427,46 @@ AGENT_INFO = {
 @app.get("/api/agent_info")
 def agent_info():
     return AGENT_INFO
+
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+from agent_pipeline import PipelineClients, run_pipeline
+from errors import PipelineError
+from llm_client import get_llm_client
+from retrieval import get_pinecone_index_safe
+from supabase_log import log_execution
+
+_clients: PipelineClients | None = None
+
+
+def _get_clients() -> PipelineClients:
+    global _clients
+    if _clients is None:
+        llm_client = get_llm_client()
+        pinecone_index = get_pinecone_index_safe()
+        _clients = PipelineClients(llm_client=llm_client, pinecone_index=pinecone_index, embed_client=llm_client)
+    return _clients
+
+
+@app.post("/api/execute")
+async def execute(request: Request):
+    body = await request.json()
+    prompt = body.get("prompt") if isinstance(body, dict) else None
+
+    if not isinstance(prompt, str) or not prompt.strip():
+        return JSONResponse({"status": "error", "error": "prompt is required", "response": None, "steps": []})
+
+    try:
+        clients = _get_clients()
+        result = run_pipeline(prompt, clients)
+    except PipelineError as e:
+        return JSONResponse({"status": "error", "error": str(e), "response": None, "steps": []})
+    except Exception as e:
+        return JSONResponse({"status": "error", "error": f"unexpected error: {e}", "response": None, "steps": []})
+
+    log_execution(prompt, result["response"], result["steps"])
+    return JSONResponse(
+        {"status": "ok", "error": None, "response": result["response"], "steps": result["steps"]}
+    )
