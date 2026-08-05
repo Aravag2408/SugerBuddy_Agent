@@ -373,6 +373,14 @@ _EXAMPLE_2_STEPS = [
     ),
 ]
 
+_EXAMPLE_NOTE = (
+    "`full_response` and `steps` below describe the COMPLETE multi-turn conversation, not the "
+    "result of a single /api/execute call: turn 1 (this `prompt` alone) returns the 10-question "
+    "questionnaire with only the CGM Event step, and turn 2 (the whole transcript so far plus the "
+    "teen's answers) returns the ReAct Agent, Confidence Classification, and Parent Summary steps "
+    "along with the final summary shown as `full_response`."
+)
+
 AGENT_INFO = {
     "description": (
         "SugarBuddy investigates an abnormal glucose (CGM) event for a parent-teen pair managing "
@@ -389,7 +397,11 @@ AGENT_INFO = {
         "Hebrew.\n\nWhat it CANNOT do (constraints): it does not diagnose or replace medical "
         "advice; it does not read a live CGM feed as part of this contract (the event is "
         "described in the prompt, not fetched automatically); and it never asks more than one "
-        "follow-up question regardless of how the underlying model responds."
+        "follow-up question regardless of how the underlying model responds.\n\nPipeline stages, "
+        "in order: CGM Event -> Structured Questionnaire (deterministic, no LLM call, so it "
+        "produces no steps entry) -> ReAct Agent -> Confidence Classification -> Parent Summary; "
+        "every stage except the Structured Questionnaire contributes one entry to the steps array, "
+        "under exactly these module names."
     ),
     "purpose": (
         "Turn a raw glucose anomaly into a calm, evidence-based conversation starter for a "
@@ -414,11 +426,13 @@ AGENT_INFO = {
             "prompt": "הסוכר קפץ ל-260 ועולה מהר",
             "full_response": _EX1_PARENT_SUMMARY,
             "steps": _EXAMPLE_1_STEPS,
+            "note": _EXAMPLE_NOTE,
         },
         {
             "prompt": "הסוכר ירד פתאום ל-65 בלי שהבנו למה",
             "full_response": _EX2_PARENT_SUMMARY,
             "steps": _EXAMPLE_2_STEPS,
+            "note": _EXAMPLE_NOTE,
         },
     ],
 }
@@ -439,6 +453,11 @@ from retrieval import get_pinecone_index_safe
 from supabase_log import log_execution
 
 _clients: PipelineClients | None = None
+
+# The endpoint is public and unauthenticated (as the course requires) but is
+# backed by a shared, fixed LLM budget, so cap how much text one request can
+# push into the chain. A legitimate turn-3 transcript is a few KB at most.
+MAX_PROMPT_CHARS = 20_000
 
 
 def _get_clients() -> PipelineClients:
@@ -462,6 +481,9 @@ async def execute(request: Request):
     if not isinstance(prompt, str) or not prompt.strip():
         return JSONResponse({"status": "error", "error": "prompt is required", "response": None, "steps": []})
 
+    if len(prompt) > MAX_PROMPT_CHARS:
+        return JSONResponse({"status": "error", "error": "prompt is too long", "response": None, "steps": []})
+
     try:
         clients = _get_clients()
         result = run_pipeline(prompt, clients)
@@ -481,9 +503,12 @@ async def execute(request: Request):
 from fastapi.responses import HTMLResponse
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
-INDEX_HTML = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 
+# Read the GUI asset per-request, not at import time: a missing or unreadable
+# static/index.html must break only this route, never the module import (which
+# would take /api/team_info, /api/agent_info, /api/model_architecture and
+# /api/execute down with it).
 @app.get("/", response_class=HTMLResponse)
 def gui():
-    return INDEX_HTML
+    return (STATIC_DIR / "index.html").read_text(encoding="utf-8")

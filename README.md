@@ -26,10 +26,19 @@ CGM Event -> Structured Questionnaire (10 yes/no) -> ReAct Agent (bounded 0-or-1
   [docs/superpowers/specs/2026-07-01-anomaly-scheduler-design.md](docs/superpowers/specs/2026-07-01-anomaly-scheduler-design.md)
   for the plan to run detection on a schedule (GitHub Actions -> FastAPI on
   Vercel) with case state persisted in Supabase.
-- **FastAPI layer / questionnaire UI** — not yet started.
+- **FastAPI layer / questionnaire UI** — built and tested. `api/index.py` exposes
+  the four required endpoints (`/api/team_info`, `/api/agent_info`,
+  `/api/model_architecture`, `/api/execute`) plus a browser GUI at `/`, and the
+  whole app deploys to Vercel as a single serverless function.
 
 ## Repo layout
 
+- `api/index.py` — the FastAPI app: the four required endpoints and the GUI
+  route, wrapping `agent_pipeline.run_pipeline`.
+- `static/index.html` — the single-page GUI (run the agent, reply across turns,
+  inspect each module's prompts and responses).
+- `vercel.json` — Vercel deployment config: routes every path to the function
+  and raises its max duration to 300s for the multi-call LLM chain.
 - `sugarbuddy_anomaly_detector.py` — `NightscoutClient`, `AnomalyDetector`,
   and `CaseTracker` for the anomaly-detection stage.
 - `agent_pipeline.py` — the orchestrator: CGM event parsing, the bounded ReAct
@@ -54,3 +63,14 @@ cp .env.example .env   # then fill in the values
 python -m pytest tests/ -v
 python local_prototype.py   # manual end-to-end smoke test (makes real API calls)
 ```
+
+### Running the API + GUI locally
+
+```
+uvicorn api.index:app --reload
+```
+
+Then open <http://127.0.0.1:8000/> for the GUI. The endpoints are served from the
+same app: `/api/team_info`, `/api/agent_info`, `/api/model_architecture`, and
+`POST /api/execute` (`{"prompt": "..."}`). Using the GUI or `/api/execute` makes
+real LLM calls, so `.env` must be filled in.

@@ -65,12 +65,19 @@
     return details;
   }
 
+  // The SUGARBUDDY_CONTEXT marker carries conversation state and MUST stay in
+  // `transcript` (it is what the next /api/execute call round-trips), but it is
+  // base64 gibberish to a human, so hide it from the on-screen response only.
+  function stripMarker(text) {
+    return text.replace(/<!--\s*SUGARBUDDY_CONTEXT:[\s\S]*?-->/g, "").trimEnd();
+  }
+
   function renderTurn(responseText, steps) {
     const turn = document.createElement("div");
     turn.className = "turn";
     const p = document.createElement("div");
     p.className = "response";
-    p.textContent = responseText;
+    p.textContent = stripMarker(responseText);
     turn.appendChild(p);
     steps.forEach((step) => turn.appendChild(renderStep(step)));
     log.appendChild(turn);
@@ -90,6 +97,10 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: candidateTranscript }),
       });
+      // A non-2xx response (e.g. a Vercel function timeout) returns an HTML
+      // error page, not JSON — surface that as a clear message instead of
+      // letting res.json() blow up with a confusing SyntaxError.
+      if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
 
       if (data.status === "error") {
