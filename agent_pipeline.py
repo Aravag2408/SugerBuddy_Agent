@@ -151,3 +151,69 @@ def run_parent_summary(anomaly, answers, findings, llm_client) -> tuple[dict, di
         ensure_ascii=False, indent=2,
     )
     return chat_json(llm_client, "Parent Summary", PARENT_SUMMARY_SYSTEM_PROMPT, user_prompt)
+
+
+from dataclasses import dataclass
+
+from conversation_state import build_marker, extract_conversation_state
+from questionnaire import format_questionnaire_prompt, parse_answers
+from retrieval import retrieve_context_keyword, retrieve_context_pinecone
+
+
+@dataclass
+class PipelineClients:
+    llm_client: object
+    pinecone_index: object = None
+    embed_client: object = None
+
+
+def _retrieve_context(anomaly: dict, answers: dict, clients: PipelineClients) -> dict:
+    direction = anomaly.get("direction")
+    if clients.pinecone_index is not None and clients.embed_client is not None:
+        return retrieve_context_pinecone(direction, answers, clients.embed_client, clients.pinecone_index)
+    return retrieve_context_keyword(direction, answers)
+
+
+def _finalize(anomaly, answers, findings, clients: PipelineClients, prior_steps: list[dict]) -> dict:
+    confidence_result, confidence_step = run_confidence_classification(
+        anomaly, answers, findings, clients.llm_client
+    )
+    summary_result, summary_step = run_parent_summary(
+        anomaly, answers, confidence_result["findings"], clients.llm_client
+    )
+    return {
+        "response": summary_result["parent_summary"],
+        "steps": prior_steps + [confidence_step, summary_step],
+    }
+
+
+def run_pipeline(prompt: str, clients: PipelineClients) -> dict:
+    state = extract_conversation_state(prompt)
+
+    if state is None or state.stage not in ("questionnaire_sent", "followup_sent"):
+        anomaly, steps = parse_cgm_event(prompt, clients.llm_client)
+        return {"response": format_questionnaire_prompt(anomaly), "steps": steps}
+
+    if state.stage == "questionnaire_sent":
+        answers, notes = parse_answers(state.reply_text)
+        context = _retrieve_context(state.anomaly, answers, clients)
+        result, react_step = run_react_agent(state.anomaly, answers, notes, context, clients.llm_client)
+
+        if result.get("need_more_info"):
+            marker = build_marker(
+                "followup_sent", anomaly=state.anomaly, answers=answers, notes=notes,
+                followup_question=result["followup_question"],
+            )
+            return {"response": f"{result['followup_question']}\n\n{marker}", "steps": [react_step]}
+
+        return _finalize(state.anomaly, answers, result["findings"], clients, [react_step])
+
+    # state.stage == "followup_sent"
+    followup_answer = state.reply_text
+    context = _retrieve_context(state.anomaly, state.answers, clients)
+    result, react_step = run_react_agent(
+        state.anomaly, state.answers, state.notes, context, clients.llm_client,
+        followup={"question": state.followup_question, "answer": followup_answer},
+        allow_followup=False,
+    )
+    return _finalize(state.anomaly, state.answers, result["findings"], clients, [react_step])
