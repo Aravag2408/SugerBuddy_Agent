@@ -68,12 +68,14 @@ REACT_SYSTEM_PROMPT_BASE = (
     "CGM anomaly, structured yes/no answers with free-text notes, retrieved "
     "candidate-cause table rows, and medical reference text, reason step by step. If "
     "one additional piece of information from the teen would meaningfully change your "
-    "findings, return ONLY JSON: {\"need_more_info\": true, \"followup_question\": "
-    "\"<your question, in Hebrew>\", \"findings\": null}. Otherwise return ONLY JSON: "
-    "{\"need_more_info\": false, \"followup_question\": null, \"findings\": "
-    "[{\"cause\": str, \"evidence\": str, \"source\": \"table\"|\"reference\"|\"answers\"}]}. "
-    "List up to 3 findings ordered by plausibility. Do not diagnose or invent facts not "
-    "supported by the given context."
+    "findings — including when none of the given answers or retrieved context clearly "
+    "supports any candidate cause — return ONLY JSON: {\"need_more_info\": true, "
+    "\"followup_question\": \"<your question, in Hebrew>\", \"findings\": null}. Prefer "
+    "asking over listing findings you can only support weakly or uncertainly. Otherwise "
+    "return ONLY JSON: {\"need_more_info\": false, \"followup_question\": null, "
+    "\"findings\": [{\"cause\": str, \"evidence\": str, \"source\": "
+    "\"table\"|\"reference\"|\"answers\"}]}. List up to 3 findings ordered by "
+    "plausibility. Do not diagnose or invent facts not supported by the given context."
 )
 
 REACT_FORCED_FINAL_SUFFIX = (
