@@ -1,225 +1,50 @@
-"""Local, zero-cost prototype: CGM anomaly -> questionnaire -> agent-call stub."""
+"""Interactive end-to-end smoke test for the SugarBuddy agent pipeline.
 
+Run manually once LLMOD_API_KEY / LLMOD_BASE_URL are set in .env (and,
+optionally, PINECONE_API_KEY for Pinecone-backed retrieval instead of the
+keyword fallback):
+
+    python local_prototype.py
+
+Drives the full multi-turn flow via input(): describe a CGM event, answer
+the 10 questions, optionally answer one follow-up question, and read the
+final parent summary. This is a manual verification tool, not part of the
+automated test suite (see tests/) — it makes real network calls.
+"""
 from __future__ import annotations
-
 import json
-from datetime import datetime, timezone
-from pathlib import Path
 
-from sugarbuddy_anomaly_detector import (
-    Anomaly,
-    AnomalyDetector,
-    AnomalySeverity,
-    AnomalyType,
-    SugarBuddyConfig,
-)
-
-DATA_DIR = Path(__file__).parent / "data"
-NIGHTSCOUT_TEST_URL = "https://ggns2.fly.dev/"
-
-FALLBACK_ANOMALY = Anomaly(
-    type=AnomalyType.GLUCOSE_EXTREME,
-    severity=AnomalySeverity.WARNING,
-    message=(
-        "Glucose rose to 260 mg/dL (threshold: 180 mg/dL). "
-        "New high — not present in the last two readings."
-    ),
-    timestamp=datetime.now(timezone.utc),
-    details={"sgv": 260, "threshold": 180, "direction": "high"},
-)
-
-
-def get_anomaly(config: SugarBuddyConfig) -> tuple[Anomaly, str]:
-    try:
-        detector = AnomalyDetector(config)
-        anomalies = detector.check_for_anomalies()
-    except Exception:
-        anomalies = []
-    if anomalies:
-        directional = [a for a in anomalies if derive_direction(a) is not None]
-        return (directional[0] if directional else anomalies[0]), "live"
-    return FALLBACK_ANOMALY, "fallback"
-
-
-def derive_direction(anomaly: Anomaly) -> str | None:
-    if anomaly.type == AnomalyType.GLUCOSE_EXTREME:
-        return anomaly.details.get("direction")
-    if anomaly.type == AnomalyType.RATE_OF_CHANGE:
-        roc = anomaly.details.get("roc_mgdl_per_min", 0)
-        return "high" if roc > 0 else "low"
-    if anomaly.type == AnomalyType.IOB_CONTEXTUAL:
-        return "low"
-    return None  # BIG_GAP carries no glucose-direction information
-
-
-QUESTIONS: list[tuple[str, str]] = [
-    ("ate_recently", "אכלת משהו בתוך השעתיים האחרונות?"),
-    ("carb_count_accurate", "האם הזנת כמות מדוייקת של פחמימות או בערך?"),
-    ("exercised_last_4h", "רצת, קפצת, או עשית שיעור ספורט ואימון ב-4 השעות האחרונות?"),
-    ("stressed_last_30min", "מישהו הרגיז אותך או שהיית בלחץ גדול בחצי השעה האחרונה?"),
-    ("drank_water_today", "שתית לפחות 4 כוסות מים במהלך היום?"),
-    ("hot_weather_last_30min", "האם היית בחוץ במזג אוויר חם מאוד בחצי השעה האחרונה?"),
-    ("correction_dose_last_3h", "החלפת משאבה או לקחת מנת תיקון (או פחמימות מהירות להיפו) ב-3 השעות האחרונות?"),
-    ("phone_sensor_check_last_hour", "האם היית צמודה לטלפון הנייד בשעה האחרונה, והאם בדקת שהחיישן והמשאבה מחוברים חזק לעור?"),
-    ("accurate_meals_today", "האם אכלת ארוחות מדוייקות היום?"),
-]
-
-
-def _ask_yes_no(question_text: str) -> bool:
-    while True:
-        raw = input(f"{question_text} (y/n): ").strip().lower()
-        if raw in ("y", "yes"):
-            return True
-        if raw in ("n", "no"):
-            return False
-        print("Please answer y or n.")
-
-
-def ask_questionnaire() -> dict:
-    answers: dict = {}
-    for key, text in QUESTIONS:
-        answers[key] = _ask_yes_no(text)
-    answers["notes"] = input("Notes (optional, press Enter to skip): ").strip()
-    return answers
-
-
-KEYWORD_MAP: list[tuple[str, bool, list[str]]] = [
-    ("ate_recently", False, ["ארוחות"]),
-    ("carb_count_accurate", False, ["פחמימות"]),
-    ("exercised_last_4h", True, ["פעילות גופנית"]),
-    ("stressed_last_30min", True, ["סטרס", "לחץ"]),
-    ("hot_weather_last_30min", True, ["חום", "מזג אוויר"]),
-    ("correction_dose_last_3h", True, ["תיקון"]),
-    ("phone_sensor_check_last_hour", False, ["טלפון"]),
-    ("accurate_meals_today", False, ["ארוחות"]),
-]
-
-STATE_BY_DIRECTION = {"high": "היפר", "low": "היפו"}
-
-RAG_FILES: dict[str, list[Path]] = {
-    "high": [DATA_DIR / "rag" / "ada_diabetes_association.txt"],
-    "low": [
-        DATA_DIR / "rag" / "ada_diabetes_association.txt",
-        DATA_DIR / "rag" / "niddk_hypoglycemia.txt",
-    ],
-}
-
-
-def _load_table() -> list[dict]:
-    with open(DATA_DIR / "investigation_table.json", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _extract_rag_section(text: str, direction: str) -> str:
-    marker = "## HYPERGLYCEMIA" if direction == "high" else "## HYPOGLYCEMIA"
-    other_marker = "## HYPOGLYCEMIA" if direction == "high" else "## HYPERGLYCEMIA"
-    if marker not in text:
-        return ""
-    section = text.split(marker, 1)[1]
-    if other_marker in section:
-        section = section.split(other_marker, 1)[0]
-    return section.strip()
-
-
-def retrieve_context(anomaly: Anomaly, answers: dict) -> dict:
-    direction = derive_direction(anomaly)
-    if direction is None:
-        return {"table_matches": [], "rag_snippet": ""}
-
-    state = STATE_BY_DIRECTION[direction]
-    table = [row for row in _load_table() if row["state"] == state]
-
-    matches: list[dict] = []
-    for key, trigger, keywords in KEYWORD_MAP:
-        if answers.get(key) != trigger:
-            continue
-        for row in table:
-            haystack = row["category"] + " " + row["cause"]
-            if any(kw in haystack for kw in keywords) and row not in matches:
-                matches.append(row)
-
-    matches = matches[:3]
-
-    rag_snippet = ""
-    for path in RAG_FILES.get(direction, []):
-        text = path.read_text(encoding="utf-8")
-        rag_snippet += _extract_rag_section(text, direction) + "\n\n"
-
-    return {"table_matches": matches, "rag_snippet": rag_snippet.strip()}
-
-
-SYSTEM_PROMPT = (
-    "You are a diabetes event investigation assistant for a parent-teen pair. "
-    "Given a CGM anomaly, structured yes/no answers, relevant cause table rows, "
-    "and medical reference text, return ONLY a JSON object with two keys: "
-    "parent_summary (evidence-based possible contributing factors with confidence "
-    "levels, for the parent) and teen_guidance (short, concrete, actionable next "
-    "steps for the teen). Do not diagnose."
-)
-
-
-def _build_user_prompt(anomaly: Anomaly, answers: dict, context: dict) -> str:
-    payload = {
-        "anomaly": {
-            "type": anomaly.type.value,
-            "severity": anomaly.severity.value,
-            "message": anomaly.message,
-            "timestamp": anomaly.timestamp.isoformat(),
-            "details": anomaly.details,
-        },
-        "questionnaire_answers": answers,
-        "candidate_causes": context["table_matches"],
-        "reference_text": context["rag_snippet"],
-    }
-    return json.dumps(payload, ensure_ascii=False, indent=2)
-
-
-def build_agent_step(anomaly: Anomaly, answers: dict, context: dict) -> dict:
-    return {
-        "module": "InvestigationAgent",
-        "prompt": {
-            "system_prompt": SYSTEM_PROMPT,
-            "user_prompt": _build_user_prompt(anomaly, answers, context),
-        },
-        "response": None,
-    }
-
-
-def print_agent_stub(step: dict) -> None:
-    print("\n=== Agent step (TODO — not calling the LLM yet) ===")
-    print(json.dumps(step, ensure_ascii=False, indent=2))
-
-
-def save_record(anomaly: Anomaly, source: str, answers: dict, context: dict, step: dict) -> None:
-    record = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "anomaly": {
-            "type": anomaly.type.value,
-            "severity": anomaly.severity.value,
-            "message": anomaly.message,
-            "details": anomaly.details,
-            "source": source,
-        },
-        "questionnaire": answers,
-        "context": context,
-        "step": step,
-    }
-    out_path = Path(__file__).parent / "local_run_output.json"
-    out_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\nSaved record to {out_path}")
+from agent_pipeline import PipelineClients, run_pipeline
+from llm_client import get_llm_client
+from retrieval import get_pinecone_index_safe
 
 
 def main() -> None:
-    config = SugarBuddyConfig(nightscout_base_url=NIGHTSCOUT_TEST_URL)
-    anomaly, source = get_anomaly(config)
-    print(f"\nAnomaly ({source}): [{anomaly.severity.value}] {anomaly.message}")
+    llm_client = get_llm_client()
+    pinecone_index = get_pinecone_index_safe()
+    if pinecone_index is None:
+        print("[info] Pinecone not configured — falling back to keyword-matching retrieval.\n")
 
-    answers = ask_questionnaire()
-    context = retrieve_context(anomaly, answers)
-    step = build_agent_step(anomaly, answers, context)
+    clients = PipelineClients(llm_client=llm_client, pinecone_index=pinecone_index, embed_client=llm_client)
 
-    print_agent_stub(step)
-    save_record(anomaly, source, answers, context, step)
+    print("Describe the CGM event (e.g. 'glucose spiked to 260 mg/dL and is rising fast'):")
+    transcript = input("> ").strip()
+
+    while True:
+        result = run_pipeline(transcript, clients)
+
+        print("\n=== Agent response ===")
+        print(result["response"])
+        print("\n=== Steps ===")
+        print(json.dumps(result["steps"], ensure_ascii=False, indent=2))
+
+        if "SUGARBUDDY_CONTEXT" not in result["response"]:
+            print("\n=== Done: final parent summary reached ===")
+            break
+
+        print("\nYour reply (questionnaire answers or the follow-up answer):")
+        reply = input("> ").strip()
+        transcript = f"{transcript}\n{result['response']}\n{reply}"
 
 
 if __name__ == "__main__":
