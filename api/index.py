@@ -476,3 +476,14 @@ async def execute(request: Request):
     return JSONResponse(
         {"status": "ok", "error": None, "response": response_text, "steps": steps}
     )
+
+
+from fastapi.responses import HTMLResponse
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+INDEX_HTML = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+
+@app.get("/", response_class=HTMLResponse)
+def gui():
+    return INDEX_HTML
