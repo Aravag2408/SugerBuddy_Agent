@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SugarBuddy</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+  h1 { margin-bottom: 0.25rem; }
+  .subtitle { color: #666; margin-top: 0; }
+  textarea { width: 100%; min-height: 4rem; font-family: inherit; font-size: 1rem; padding: 0.5rem; box-sizing: border-box; }
+  button { padding: 0.5rem 1.25rem; font-size: 1rem; cursor: pointer; margin-top: 0.5rem; }
+  .turn { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; direction: auto; }
+  .turn .response { white-space: pre-wrap; }
+  details { margin-top: 0.5rem; }
+  details pre { white-space: pre-wrap; background: #f7f7f7; padding: 0.5rem; border-radius: 4px; direction: auto; }
+  section { margin-top: 2rem; padding-top: 1rem; border-top: 2px solid #eee; }
+  #parent-decision-section { display: none; }
+  #error-box { display: none; color: #b00020; border: 1px solid #b00020; border-radius: 8px; padding: 1rem; }
+  #teen-message-box { direction: auto; background: #eef7ee; border-radius: 8px; padding: 1rem; min-height: 1.5rem; }
+</style>
+</head>
+<body>
+<h1>SugarBuddy</h1>
+<p class="subtitle">Parent-teen diabetes investigation agent</p>
+
+<div id="error-box"></div>
+
+<textarea id="input-box" placeholder="Describe the CGM event (e.g. 'glucose spiked to 260 mg/dL and is rising fast')"></textarea>
+<br />
+<button id="run-button">Run Agent</button>
+<button id="reset-button" style="display:none">Start a new event</button>
+
+<div id="conversation-log"></div>
+
+<section id="parent-decision-section">
+  <h2>Parent's decision</h2>
+  <textarea id="parent-decision-input" placeholder="What should the teen do?"></textarea>
+  <br />
+  <button id="send-to-teen-button">Send to teen</button>
+  <h3>Message to teen</h3>
+  <div id="teen-message-box"></div>
+</section>
+
+<script>
+  let transcript = "";
+  const inputBox = document.getElementById("input-box");
+  const runButton = document.getElementById("run-button");
+  const resetButton = document.getElementById("reset-button");
+  const log = document.getElementById("conversation-log");
+  const errorBox = document.getElementById("error-box");
+  const parentSection = document.getElementById("parent-decision-section");
+
+  function renderStep(step) {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = step.module;
+    details.appendChild(summary);
+    const pre = document.createElement("pre");
+    pre.textContent =
+      "SYSTEM PROMPT:\n" + step.prompt.system_prompt +
+      "\n\nUSER PROMPT:\n" + step.prompt.user_prompt +
+      "\n\nRESPONSE:\n" + JSON.stringify(step.response, null, 2);
+    details.appendChild(pre);
+    return details;
+  }
+
+  // The SUGARBUDDY_CONTEXT marker carries conversation state and MUST stay in
+  // `transcript` (it is what the next /api/execute call round-trips), but it is
+  // base64 gibberish to a human, so hide it from the on-screen response only.
+  function stripMarker(text) {
+    return text.replace(/<!--\s*SUGARBUDDY_CONTEXT:[\s\S]*?-->/g, "").trimEnd();
+  }
+
+  function renderTurn(responseText, steps) {
+    const turn = document.createElement("div");
+    turn.className = "turn";
+    const p = document.createElement("div");
+    p.className = "response";
+    p.textContent = stripMarker(responseText);
+    turn.appendChild(p);
+    steps.forEach((step) => turn.appendChild(renderStep(step)));
+    log.appendChild(turn);
+  }
+
+  async function runAgent() {
+    errorBox.style.display = "none";
+    const userText = inputBox.value.trim();
+    if (!userText) return;
+
+    const candidateTranscript = transcript ? transcript + "\n" + userText : userText;
+    runButton.disabled = true;
+
+    try {
+      const res = await fetch("/api/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: candidateTranscript }),
+      });
+      // A non-2xx response (e.g. a Vercel function timeout) returns an HTML
+      // error page, not JSON — surface that as a clear message instead of
+      // letting res.json() blow up with a confusing SyntaxError.
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+
+      if (data.status === "error") {
+        errorBox.textContent = "Error: " + data.error;
+        errorBox.style.display = "block";
+        runButton.disabled = false;
+        return;
+      }
+
+      transcript = candidateTranscript;
+      inputBox.value = "";
+
+      renderTurn(data.response, data.steps);
+      transcript = transcript + "\n" + data.response;
+
+      if (data.response.includes("SUGARBUDDY_CONTEXT")) {
+        runButton.textContent = "Send reply";
+        inputBox.placeholder = "Your reply (answers or follow-up answer)";
+      } else {
+        runButton.style.display = "none";
+        inputBox.style.display = "none";
+        resetButton.style.display = "inline-block";
+        parentSection.style.display = "block";
+      }
+    } catch (err) {
+      errorBox.textContent = "Request failed: " + err;
+      errorBox.style.display = "block";
+    } finally {
+      runButton.disabled = false;
+    }
+  }
+
+  function resetConversation() {
+    transcript = "";
+    log.innerHTML = "";
+    inputBox.value = "";
+    inputBox.style.display = "inline-block";
+    inputBox.placeholder = "Describe the CGM event (e.g. 'glucose spiked to 260 mg/dL and is rising fast')";
+    runButton.textContent = "Run Agent";
+    runButton.style.display = "inline-block";
+    resetButton.style.display = "none";
+    parentSection.style.display = "none";
+    document.getElementById("parent-decision-input").value = "";
+    document.getElementById("teen-message-box").textContent = "";
+    errorBox.style.display = "none";
+  }
+
+  runButton.addEventListener("click", runAgent);
+  resetButton.addEventListener("click", resetConversation);
+  document.getElementById("send-to-teen-button").addEventListener("click", () => {
+    const text = document.getElementById("parent-decision-input").value;
+    document.getElementById("teen-message-box").textContent = text;
+  });
+</script>
+</body>
+</html>
