@@ -1,58 +1,177 @@
 <!doctype html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>SugarBuddy</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
-  h1 { margin-bottom: 0.25rem; }
-  .subtitle { color: #666; margin-top: 0; }
-  textarea { width: 100%; min-height: 4rem; font-family: inherit; font-size: 1rem; padding: 0.5rem; box-sizing: border-box; }
-  button { padding: 0.5rem 1.25rem; font-size: 1rem; cursor: pointer; margin-top: 0.5rem; }
-  .turn { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; direction: auto; }
-  .turn .response { white-space: pre-wrap; }
-  details { margin-top: 0.5rem; }
-  details pre { white-space: pre-wrap; background: #f7f7f7; padding: 0.5rem; border-radius: 4px; direction: auto; }
-  section { margin-top: 2rem; padding-top: 1rem; border-top: 2px solid #eee; }
-  #parent-decision-section { display: none; }
-  #error-box { display: none; color: #b00020; border: 1px solid #b00020; border-radius: 8px; padding: 1rem; }
-  #teen-message-box { direction: auto; background: #eef7ee; border-radius: 8px; padding: 1rem; min-height: 1.5rem; }
+  :root {
+    --color-primary: #7a1f3d;
+    --color-primary-dark: #5c1730;
+    --color-card: #fdf6fb;
+    --color-card-alt: #f3ecfa;
+    --color-border: #e8dcef;
+    --color-text: #2a1a22;
+    --color-text-muted: #6b5c66;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, sans-serif;
+    margin: 0;
+    padding: 2rem 1rem;
+    color: var(--color-text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  .bg-decoration {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(135deg, #efe3f7 0%, #fbe9df 50%, #fbe3ec 100%);
+    overflow: hidden;
+  }
+  .bg-decoration::before, .bg-decoration::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(60px);
+    opacity: 0.55;
+  }
+  .bg-decoration::before { width: 420px; height: 420px; background: #caa6e0; top: -120px; left: -100px; }
+  .bg-decoration::after { width: 380px; height: 380px; background: #f7b98c; bottom: -100px; right: -80px; }
+  .app { max-width: 700px; margin: 0 auto; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  h1.screen-title { color: var(--color-primary); font-size: 1.6rem; margin: 0 0 0.25rem; }
+  .screen-subtitle { color: var(--color-text-muted); margin: 0 0 1.25rem; }
+  .card {
+    background: var(--color-card);
+    border-radius: 16px;
+    box-shadow: 0 4px 18px rgba(122, 31, 61, 0.08);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+  }
+  textarea {
+    width: 100%; min-height: 5rem; font-family: inherit; font-size: 1rem;
+    padding: 0.75rem; border-radius: 10px; border: 1px solid var(--color-border);
+    resize: vertical;
+  }
+  textarea:focus { outline: none; border-color: var(--color-primary); }
+  .btn-primary {
+    display: block; width: 100%; border: none; border-radius: 10px;
+    padding: 0.75rem 1.5rem; font-size: 1rem; font-weight: 600; cursor: pointer;
+    background: var(--color-primary); color: #fff; margin-top: 0.75rem;
+  }
+  .btn-primary:hover { background: var(--color-primary-dark); }
+  .btn-primary:disabled { background: #d9c3cd; cursor: not-allowed; }
+  .progress-line { font-size: 0.95rem; margin-bottom: 0.5rem; }
+  .progress-bar-track {
+    background: var(--color-card-alt); border-radius: 999px; height: 8px; overflow: hidden; margin-bottom: 1.5rem;
+  }
+  .progress-bar-fill {
+    background: var(--color-primary); height: 100%; border-radius: 999px; transition: width 0.2s ease; width: 0%;
+  }
+  .question-card { display: flex; flex-direction: column; gap: 0.75rem; }
+  .question-header { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; font-size: 1.05rem; text-align: right; }
+  .question-badge {
+    background: #f5d9df; color: var(--color-primary); border-radius: 50%;
+    width: 1.75rem; height: 1.75rem; display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 700; flex-shrink: 0;
+  }
+  .question-buttons { display: flex; gap: 0.75rem; }
+  .yn-btn {
+    flex: 1; padding: 0.9rem; border-radius: 10px; border: 1px solid var(--color-border);
+    background: var(--color-card-alt); color: var(--color-text); font-size: 1rem; font-weight: 600; cursor: pointer;
+  }
+  .yn-btn.selected { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+  details.tech-trace { margin-top: 1.5rem; }
+  details.tech-trace > summary { cursor: pointer; font-weight: 600; color: var(--color-text-muted); font-size: 0.9rem; }
+  details.tech-trace .step-block { margin-top: 0.75rem; }
+  details.tech-trace .step-block summary { color: var(--color-primary); cursor: pointer; }
+  details.tech-trace pre {
+    white-space: pre-wrap; background: var(--color-card-alt); padding: 0.75rem; border-radius: 8px;
+    direction: auto; font-size: 0.85rem;
+  }
+  #error-box {
+    display: none; color: var(--color-primary); background: #fbe4ea; border: 1px solid var(--color-primary);
+    border-radius: 10px; padding: 1rem; margin-bottom: 1rem;
+  }
 </style>
 </head>
 <body>
-<h1>SugarBuddy</h1>
-<p class="subtitle">Parent-teen diabetes investigation agent</p>
+<div class="bg-decoration"></div>
+<div class="app">
+  <div id="error-box"></div>
 
-<div id="error-box"></div>
+  <section id="screen-intro" class="screen active">
+    <h1 class="screen-title">SugarBuddy</h1>
+    <p class="screen-subtitle">ספרי לנו מה קרה עם הסוכר, ונעזור להבין ביחד.</p>
+    <div class="card">
+      <textarea id="intro-input" placeholder="לדוגמה: הסוכר קפץ ל-260 ועולה מהר"></textarea>
+      <button id="intro-button" class="btn-primary">התחל</button>
+    </div>
+  </section>
 
-<textarea id="input-box" placeholder="Describe the CGM event (e.g. 'glucose spiked to 260 mg/dL and is rising fast')"></textarea>
-<br />
-<button id="run-button">Run Agent</button>
-<button id="reset-button" style="display:none">Start a new event</button>
-
-<div id="conversation-log"></div>
-
-<section id="parent-decision-section">
-  <h2>Parent's decision</h2>
-  <textarea id="parent-decision-input" placeholder="What should the teen do?"></textarea>
-  <br />
-  <button id="send-to-teen-button">Send to teen</button>
-  <h3>Message to teen</h3>
-  <div id="teen-message-box"></div>
-</section>
+  <section id="screen-questions" class="screen">
+    <h1 class="screen-title">כמה שאלות קצרות</h1>
+    <p class="screen-subtitle">ענה על כל השאלות כדי שנוכל להבין טוב יותר מה קרה.</p>
+    <p class="progress-line"><span id="progress-count">0</span> מתוך 10 שאלות נענו</p>
+    <div class="progress-bar-track"><div id="progress-bar-fill" class="progress-bar-fill"></div></div>
+    <div id="questions-list"></div>
+    <button id="questions-continue-button" class="btn-primary" disabled>המשך</button>
+    <div id="questions-tech-trace"></div>
+  </section>
+</div>
 
 <script>
-  let transcript = "";
-  const inputBox = document.getElementById("input-box");
-  const runButton = document.getElementById("run-button");
-  const resetButton = document.getElementById("reset-button");
-  const log = document.getElementById("conversation-log");
-  const errorBox = document.getElementById("error-box");
-  const parentSection = document.getElementById("parent-decision-section");
+  const QUESTIONS = [
+    ["⏱️", "אכלת משהו בתוך השעתיים האחרונות?"],
+    ["🧮", "האם הזנת כמות מדוייקת של פחמימות או בערך?"],
+    ["👟", "רצת, קפצת, או עשית שיעור ספורט ואימון ב-4 השעות האחרונות?"],
+    ["😤", "מישהו הרגיז אותך או שהיית בלחץ גדול בחצי השעה האחרונה?"],
+    ["💧", "שתית לפחות 4 כוסות מים במהלך היום?"],
+    ["☀️", "האם היית בחוץ במזג אוויר חם מאוד בחצי השעה האחרונה?"],
+    ["💉", "החלפת משאבה או לקחת מנת תיקון (או פחמימות מהירות להיפו) ב-3 השעות האחרונות?"],
+    ["📱", "האם היית צמודה לטלפון הנייד בשעה האחרונה, והאם בדקת שהחיישן והמשאבה מחוברים חזק לעור?"],
+    ["🍎", "האם אכלת ארוחות מדוייקות היום?"],
+    ["🩸", "האם עשית בדיקה באצבע או כיול לאחרונה?"],
+  ];
 
-  function renderStep(step) {
+  let transcript = "";
+  let answers = new Array(QUESTIONS.length).fill(null);
+
+  const errorBox = document.getElementById("error-box");
+  const screens = {
+    intro: document.getElementById("screen-intro"),
+    questions: document.getElementById("screen-questions"),
+  };
+
+  function showScreen(name) {
+    Object.values(screens).forEach((el) => el.classList.remove("active"));
+    screens[name].classList.add("active");
+  }
+
+  function showError(message) {
+    errorBox.textContent = message;
+    errorBox.style.display = "block";
+  }
+
+  function clearError() {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+  }
+
+  // The SUGARBUDDY_CONTEXT marker carries conversation state and MUST stay in
+  // `transcript` (it is what the next /api/execute call round-trips), but it is
+  // base64 gibberish to a human, so hide it from any on-screen response text.
+  function stripMarker(text) {
+    return text.replace(/<!--\s*SUGARBUDDY_CONTEXT:[\s\S]*?-->/g, "").trimEnd();
+  }
+
+  function renderStepBlock(step) {
     const details = document.createElement("details");
+    details.className = "step-block";
     const summary = document.createElement("summary");
     summary.textContent = step.module;
     details.appendChild(summary);
@@ -65,94 +184,133 @@
     return details;
   }
 
-  // The SUGARBUDDY_CONTEXT marker carries conversation state and MUST stay in
-  // `transcript` (it is what the next /api/execute call round-trips), but it is
-  // base64 gibberish to a human, so hide it from the on-screen response only.
-  function stripMarker(text) {
-    return text.replace(/<!--\s*SUGARBUDDY_CONTEXT:[\s\S]*?-->/g, "").trimEnd();
+  function renderTechTrace(container, steps) {
+    container.innerHTML = "";
+    if (!steps || steps.length === 0) return;
+    const details = document.createElement("details");
+    details.className = "tech-trace";
+    const summary = document.createElement("summary");
+    summary.textContent = "פרטים טכניים";
+    details.appendChild(summary);
+    steps.forEach((step) => details.appendChild(renderStepBlock(step)));
+    container.appendChild(details);
   }
 
-  function renderTurn(responseText, steps) {
-    const turn = document.createElement("div");
-    turn.className = "turn";
-    const p = document.createElement("div");
-    p.className = "response";
-    p.textContent = stripMarker(responseText);
-    turn.appendChild(p);
-    steps.forEach((step) => turn.appendChild(renderStep(step)));
-    log.appendChild(turn);
+  async function callExecute(promptText) {
+    const res = await fetch("/api/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: promptText }),
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
   }
 
-  async function runAgent() {
-    errorBox.style.display = "none";
-    const userText = inputBox.value.trim();
-    if (!userText) return;
+  // --- Intro screen ---
+  const introInput = document.getElementById("intro-input");
+  const introButton = document.getElementById("intro-button");
 
-    const candidateTranscript = transcript ? transcript + "\n" + userText : userText;
-    runButton.disabled = true;
-
+  introButton.addEventListener("click", async () => {
+    clearError();
+    const text = introInput.value.trim();
+    if (!text) return;
+    introButton.disabled = true;
     try {
-      const res = await fetch("/api/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: candidateTranscript }),
-      });
-      // A non-2xx response (e.g. a Vercel function timeout) returns an HTML
-      // error page, not JSON — surface that as a clear message instead of
-      // letting res.json() blow up with a confusing SyntaxError.
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-
+      const data = await callExecute(text);
       if (data.status === "error") {
-        errorBox.textContent = "Error: " + data.error;
-        errorBox.style.display = "block";
-        runButton.disabled = false;
+        showError("שגיאה: " + data.error);
         return;
       }
-
-      transcript = candidateTranscript;
-      inputBox.value = "";
-
-      renderTurn(data.response, data.steps);
-      transcript = transcript + "\n" + data.response;
-
-      if (data.response.includes("SUGARBUDDY_CONTEXT")) {
-        runButton.textContent = "Send reply";
-        inputBox.placeholder = "Your reply (answers or follow-up answer)";
-      } else {
-        runButton.style.display = "none";
-        inputBox.style.display = "none";
-        resetButton.style.display = "inline-block";
-        parentSection.style.display = "block";
-      }
+      transcript = text + "\n" + data.response;
+      renderQuestions();
+      renderTechTrace(document.getElementById("questions-tech-trace"), data.steps);
+      showScreen("questions");
     } catch (err) {
-      errorBox.textContent = "Request failed: " + err;
-      errorBox.style.display = "block";
+      showError("הבקשה נכשלה: " + err);
     } finally {
-      runButton.disabled = false;
+      introButton.disabled = false;
     }
+  });
+
+  // --- Questions screen ---
+  const questionsList = document.getElementById("questions-list");
+  const progressCount = document.getElementById("progress-count");
+  const progressBarFill = document.getElementById("progress-bar-fill");
+  const questionsContinueButton = document.getElementById("questions-continue-button");
+
+  function renderQuestions() {
+    answers = new Array(QUESTIONS.length).fill(null);
+    questionsList.innerHTML = "";
+    QUESTIONS.forEach(([emoji, text], index) => {
+      const card = document.createElement("div");
+      card.className = "card question-card";
+
+      const header = document.createElement("div");
+      header.className = "question-header";
+      const badge = document.createElement("span");
+      badge.className = "question-badge";
+      badge.textContent = String(index + 1);
+      const emojiSpan = document.createElement("span");
+      emojiSpan.textContent = emoji;
+      const textSpan = document.createElement("span");
+      textSpan.textContent = text;
+      textSpan.style.flex = "1";
+      header.append(textSpan, emojiSpan, badge);
+      card.appendChild(header);
+
+      const buttons = document.createElement("div");
+      buttons.className = "question-buttons";
+      const noBtn = document.createElement("button");
+      noBtn.className = "yn-btn";
+      noBtn.textContent = "לא";
+      const yesBtn = document.createElement("button");
+      yesBtn.className = "yn-btn";
+      yesBtn.textContent = "כן";
+
+      function select(value, chosenBtn, otherBtn) {
+        answers[index] = value;
+        chosenBtn.classList.add("selected");
+        otherBtn.classList.remove("selected");
+        updateProgress();
+      }
+      noBtn.addEventListener("click", () => select(false, noBtn, yesBtn));
+      yesBtn.addEventListener("click", () => select(true, yesBtn, noBtn));
+
+      // Under dir="rtl", the first-appended flex child renders on the right —
+      // append yesBtn first so "כן" lands on the right and "לא" on the left,
+      // matching the provided mockup.
+      buttons.append(yesBtn, noBtn);
+      card.appendChild(buttons);
+      questionsList.appendChild(card);
+    });
+    updateProgress();
   }
 
-  function resetConversation() {
-    transcript = "";
-    log.innerHTML = "";
-    inputBox.value = "";
-    inputBox.style.display = "inline-block";
-    inputBox.placeholder = "Describe the CGM event (e.g. 'glucose spiked to 260 mg/dL and is rising fast')";
-    runButton.textContent = "Run Agent";
-    runButton.style.display = "inline-block";
-    resetButton.style.display = "none";
-    parentSection.style.display = "none";
-    document.getElementById("parent-decision-input").value = "";
-    document.getElementById("teen-message-box").textContent = "";
-    errorBox.style.display = "none";
+  function updateProgress() {
+    const answeredCount = answers.filter((a) => a !== null).length;
+    progressCount.textContent = String(answeredCount);
+    progressBarFill.style.width = (answeredCount / QUESTIONS.length) * 100 + "%";
+    questionsContinueButton.disabled = answeredCount < QUESTIONS.length;
   }
 
-  runButton.addEventListener("click", runAgent);
-  resetButton.addEventListener("click", resetConversation);
-  document.getElementById("send-to-teen-button").addEventListener("click", () => {
-    const text = document.getElementById("parent-decision-input").value;
-    document.getElementById("teen-message-box").textContent = text;
+  questionsContinueButton.addEventListener("click", async () => {
+    clearError();
+    const lines = answers.map((value, index) => `${index + 1}. ${value ? "כן" : "לא"}`);
+    const answerText = lines.join(" ");
+    questionsContinueButton.disabled = true;
+    try {
+      const data = await callExecute(transcript + "\n" + answerText);
+      if (data.status === "error") {
+        showError("שגיאה: " + data.error);
+        questionsContinueButton.disabled = false;
+        return;
+      }
+      transcript = transcript + "\n" + answerText + "\n" + data.response;
+      console.log("Turn 2 response (Task 2 will branch on this):", data.response);
+    } catch (err) {
+      showError("הבקשה נכשלה: " + err);
+      questionsContinueButton.disabled = false;
+    }
   });
 </script>
 </body>

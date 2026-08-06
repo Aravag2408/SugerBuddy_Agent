@@ -355,7 +355,10 @@ Replace the entire contents of `static/index.html` with:
       noBtn.addEventListener("click", () => select(false, noBtn, yesBtn));
       yesBtn.addEventListener("click", () => select(true, yesBtn, noBtn));
 
-      buttons.append(noBtn, yesBtn);
+      // Under dir="rtl", the first-appended flex child renders on the right —
+      // append yesBtn first so "כן" lands on the right and "לא" on the left,
+      // matching the provided mockup.
+      buttons.append(yesBtn, noBtn);
       card.appendChild(buttons);
       questionsList.appendChild(card);
     });
