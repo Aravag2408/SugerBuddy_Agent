@@ -102,6 +102,14 @@
   .followup-question-text { font-weight: 700; font-size: 1.1rem; margin: 0; }
   .required-mark { color: var(--color-primary); }
   .char-counter { text-align: left; font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.25rem; }
+  .teen-message-card { border: 2px solid var(--color-primary); font-size: 1.05rem; }
+  .confirm-options { display: flex; flex-direction: column; gap: 0.75rem; margin: 1rem 0; }
+  .confirm-option {
+    display: flex; align-items: center; gap: 0.5rem;
+    border: 1px solid var(--color-border); border-radius: 10px; padding: 0.9rem 1.25rem;
+    cursor: pointer; font-weight: 600;
+  }
+  .confirm-option.selected { border-color: var(--color-primary); background: var(--color-card-alt); }
 </style>
 </head>
 <body>
@@ -152,6 +160,21 @@
     <button id="send-to-teen-button" class="btn-primary">שלח לנער/ה</button>
     <div id="summary-tech-trace"></div>
   </section>
+
+  <section id="screen-teen" class="screen">
+    <h1 class="screen-title">המלצת ההורה היא:</h1>
+    <div class="card teen-message-card">
+      <p id="teen-message-text" style="white-space: pre-wrap; margin:0;"></p>
+    </div>
+    <div class="card">
+      <p style="font-weight:700; margin-top:0;">ביצעת את ההמלצה?</p>
+      <div class="confirm-options">
+        <div class="confirm-option" data-value="did">עשיתי</div>
+        <div class="confirm-option" data-value="didnt">לא עשיתי</div>
+      </div>
+      <button id="finish-button" class="btn-primary">המשך לסיום האירוע</button>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -177,6 +200,7 @@
     questions: document.getElementById("screen-questions"),
     followup: document.getElementById("screen-followup"),
     summary: document.getElementById("screen-summary"),
+    teen: document.getElementById("screen-teen"),
   };
 
   function showScreen(name) {
@@ -384,6 +408,35 @@
     } finally {
       followupSendButton.disabled = false;
     }
+  });
+
+  // --- Summary screen: send to teen ---
+  const parentDecisionInput = document.getElementById("parent-decision-input");
+  const sendToTeenButton = document.getElementById("send-to-teen-button");
+
+  sendToTeenButton.addEventListener("click", () => {
+    const text = parentDecisionInput.value.trim();
+    if (!text) return;
+    document.getElementById("teen-message-text").textContent = text;
+    document.querySelectorAll(".confirm-option").forEach((el) => el.classList.remove("selected"));
+    showScreen("teen");
+  });
+
+  // --- Teen screen ---
+  document.querySelectorAll(".confirm-option").forEach((el) => {
+    el.addEventListener("click", () => {
+      document.querySelectorAll(".confirm-option").forEach((o) => o.classList.remove("selected"));
+      el.classList.add("selected");
+    });
+  });
+
+  document.getElementById("finish-button").addEventListener("click", () => {
+    transcript = "";
+    answers = new Array(QUESTIONS.length).fill(null);
+    introInput.value = "";
+    parentDecisionInput.value = "";
+    clearError();
+    showScreen("intro");
   });
 </script>
 </body>
