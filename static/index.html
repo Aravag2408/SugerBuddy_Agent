@@ -97,6 +97,11 @@
     display: none; color: var(--color-primary); background: #fbe4ea; border: 1px solid var(--color-primary);
     border-radius: 10px; padding: 1rem; margin-bottom: 1rem;
   }
+  .followup-card { border: 2px solid var(--color-primary); }
+  .followup-label { font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 0.25rem; }
+  .followup-question-text { font-weight: 700; font-size: 1.1rem; margin: 0; }
+  .required-mark { color: var(--color-primary); }
+  .char-counter { text-align: left; font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.25rem; }
 </style>
 </head>
 <body>
@@ -122,6 +127,31 @@
     <button id="questions-continue-button" class="btn-primary" disabled>המשך</button>
     <div id="questions-tech-trace"></div>
   </section>
+
+  <section id="screen-followup" class="screen">
+    <h1 class="screen-title">עוד שאלה קצרה</h1>
+    <p class="screen-subtitle">התשובה שלך תעזור לנו להבין טוב יותר מה קרה.</p>
+    <div class="card followup-card">
+      <p class="followup-label">שאלת המשך</p>
+      <p id="followup-question-text" class="followup-question-text"></p>
+    </div>
+    <label for="followup-input" style="font-weight:600;">התשובה שלי <span class="required-mark">*</span></label>
+    <textarea id="followup-input" maxlength="500" placeholder="אפשר לכתוב כאן תשובה קצרה..."></textarea>
+    <div id="followup-char-counter" class="char-counter">0/500</div>
+    <button id="followup-send-button" class="btn-primary">שלח</button>
+    <div id="followup-tech-trace"></div>
+  </section>
+
+  <section id="screen-summary" class="screen">
+    <h1 class="screen-title">הסיכום שלנו</h1>
+    <div class="card">
+      <p id="summary-response-text" style="white-space: pre-wrap; margin: 0;"></p>
+    </div>
+    <label for="parent-decision-input" style="font-weight:600;">החלטת ההורה</label>
+    <textarea id="parent-decision-input" placeholder="מה הנער/ה צריכ/ה לעשות?"></textarea>
+    <button id="send-to-teen-button" class="btn-primary">שלח לנער/ה</button>
+    <div id="summary-tech-trace"></div>
+  </section>
 </div>
 
 <script>
@@ -145,6 +175,8 @@
   const screens = {
     intro: document.getElementById("screen-intro"),
     questions: document.getElementById("screen-questions"),
+    followup: document.getElementById("screen-followup"),
+    summary: document.getElementById("screen-summary"),
   };
 
   function showScreen(name) {
@@ -306,10 +338,51 @@
         return;
       }
       transcript = transcript + "\n" + answerText + "\n" + data.response;
-      console.log("Turn 2 response (Task 2 will branch on this):", data.response);
+      if (data.response.includes("SUGARBUDDY_CONTEXT")) {
+        document.getElementById("followup-question-text").textContent = stripMarker(data.response);
+        document.getElementById("followup-input").value = "";
+        document.getElementById("followup-char-counter").textContent = "0/500";
+        renderTechTrace(document.getElementById("followup-tech-trace"), data.steps);
+        showScreen("followup");
+      } else {
+        document.getElementById("summary-response-text").textContent = stripMarker(data.response);
+        renderTechTrace(document.getElementById("summary-tech-trace"), data.steps);
+        showScreen("summary");
+      }
     } catch (err) {
       showError("הבקשה נכשלה: " + err);
       questionsContinueButton.disabled = false;
+    }
+  });
+
+  // --- Follow-up screen ---
+  const followupInput = document.getElementById("followup-input");
+  const followupCharCounter = document.getElementById("followup-char-counter");
+  const followupSendButton = document.getElementById("followup-send-button");
+
+  followupInput.addEventListener("input", () => {
+    followupCharCounter.textContent = followupInput.value.length + "/500";
+  });
+
+  followupSendButton.addEventListener("click", async () => {
+    clearError();
+    const text = followupInput.value.trim();
+    if (!text) return;
+    followupSendButton.disabled = true;
+    try {
+      const data = await callExecute(transcript + "\n" + text);
+      if (data.status === "error") {
+        showError("שגיאה: " + data.error);
+        return;
+      }
+      transcript = transcript + "\n" + text + "\n" + data.response;
+      document.getElementById("summary-response-text").textContent = stripMarker(data.response);
+      renderTechTrace(document.getElementById("summary-tech-trace"), data.steps);
+      showScreen("summary");
+    } catch (err) {
+      showError("הבקשה נכשלה: " + err);
+    } finally {
+      followupSendButton.disabled = false;
     }
   });
 </script>
