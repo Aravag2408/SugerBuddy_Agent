@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 app = FastAPI()
 
 TEAM_INFO = {
-    "group_batch_order_number": "TODO_FILL_BEFORE_SUBMISSION",
+    "group_batch_order_number": "2_3",
     "team_name": "SugarBuddy",
     "students": [
         {"name": "Arava Gendelman", "email": "aravag@campus.technion.ac.il"},
