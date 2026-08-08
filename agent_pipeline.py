@@ -64,23 +64,26 @@ def parse_cgm_event(prompt: str, llm_client) -> tuple[dict, list[dict]]:
 
 
 REACT_SYSTEM_PROMPT_BASE = (
-    "You are a diabetes event investigation assistant for a parent-teen pair. Given a "
-    "CGM anomaly, structured yes/no answers with free-text notes, retrieved "
-    "candidate-cause table rows, and medical reference text, reason step by step. If "
-    "one additional piece of information from the teen would meaningfully change your "
-    "findings — including when none of the given answers or retrieved context clearly "
-    "supports any candidate cause — return ONLY JSON: {\"need_more_info\": true, "
-    "\"followup_question\": \"<your question, in Hebrew>\", \"findings\": null}. Prefer "
-    "asking over listing findings you can only support weakly or uncertainly. Otherwise "
-    "return ONLY JSON: {\"need_more_info\": false, \"followup_question\": null, "
-    "\"findings\": [{\"cause\": str, \"evidence\": str, \"source\": "
-    "\"table\"|\"reference\"|\"answers\"}]}. List up to 3 findings ordered by "
-    "plausibility. Do not diagnose or invent facts not supported by the given context."
+    "You are a diabetes event investigation assistant for a parent-teen pair. Given a CGM anomaly, "
+    "structured yes/no answers with free-text notes, retrieved candidate-cause table rows, and medical reference text, "
+    "reason step by step.\n\n"
+    "CRITICAL DECISION RULE:\n"
+    "1. If NONE of the retrieved candidate_causes directly explains the primary factor mentioned in the anomaly/notes (e.g., exercise, pizza, cannula issue),\n"
+    "2. OR if one additional piece of information from the teen would meaningfully change your findings,\n"
+    "3. OR if questionnaire answers contradict each other,\n"
+    "you MUST set need_more_info to true and return ONLY JSON: "
+    "{\"need_more_info\": true, \"followup_question\": \"<your question, in Hebrew>\", \"findings\": null}.\n\n"
+    "Prefer asking or requesting missing context over listing weak/uncertain findings.\n"
+    "OTHERWISE, return ONLY JSON: "
+    "{\"need_more_info\": false, \"followup_question\": null, \"findings\": [{\"cause\": str, \"evidence\": str, \"source\": \"table\"|\"reference\"|\"answers\"}]}.\n"
+    "List up to 3 findings ordered by plausibility. Do not diagnose or invent facts not supported by the given context.\n"
+    "CRITICAL OUTPUT RULES:\n"
+    "1. Output ONLY a valid JSON object. Do not wrap in markdown or add text before/after JSON.\n"
+    "2. STOP immediately after the closing brace '}'."
 )
 
 REACT_FORCED_FINAL_SUFFIX = (
-    " You must set need_more_info to false and provide findings now — no further "
-    "follow-up is allowed."
+    " You must set need_more_info to false and provide findings now — no further follow-up is allowed."
 )
 
 
@@ -119,25 +122,32 @@ def run_react_agent(
 
 
 CONFIDENCE_SYSTEM_PROMPT = (
-    "You score confidence for each candidate finding about what caused a glucose "
-    "anomaly. Given the anomaly, questionnaire answers, and a list of candidate "
-    "findings with their supporting evidence, return ONLY JSON: {\"findings\": "
-    "[{\"cause\": str, \"evidence\": str, \"confidence\": \"low\"|\"medium\"|\"high\", "
-    "\"rationale\": str}]}, preserving each finding's cause/evidence and adding "
-    "confidence and a one-sentence rationale. Base confidence on how directly the "
-    "evidence supports each cause. Write every rationale in Hebrew; the confidence "
-    "values themselves stay as the literal English strings low/medium/high."
+    "You score confidence for each candidate finding about what caused a glucose anomaly. "
+    "Given the anomaly, questionnaire answers, and a list of candidate findings with their supporting evidence, "
+    "return ONLY valid JSON: {\"findings\": [{\"cause\": str, \"evidence\": str, \"confidence\": \"low\"|\"medium\"|\"high\", \"rationale\": str}]}.\n"
+    "CRITICAL OUTPUT RULES:\n"
+    "1. Output ONLY a single valid JSON object. No markdown, no code blocks (do NOT use ```json), no trailing text.\n"
+    "2. STOP immediately after the closing JSON brace '}'.\n"
+    "3. Preserve each finding's cause/evidence and add confidence and a one-sentence rationale.\n"
+    "4. Base confidence on how directly the evidence supports each cause.\n"
+    "5. Write every rationale in Hebrew; the confidence values themselves stay as literal English strings (low/medium/high)."
 )
 
 PARENT_SUMMARY_SYSTEM_PROMPT = (
-    "You write a parent-facing summary of a glucose anomaly investigation. Given the "
-    "anomaly, the teen's questionnaire answers, and confidence-scored candidate "
-    "findings, return ONLY JSON: {\"parent_summary\": str}. parent_summary must read "
-    "as: a 2-3 sentence recap of the event and what the teen reported, then up to "
-    "three possible reasons ordered by confidence (each stated with its confidence "
-    "level), then one practical suggestion. Write parent_summary in Hebrew — it is "
-    "read directly by a Hebrew-speaking parent. Do not diagnose; present reasons as "
-    "possibilities, not conclusions."
+    "You write a parent-facing summary of a glucose anomaly investigation. Given the anomaly, the teen's "
+    "questionnaire answers, and confidence-scored candidate findings, return ONLY valid JSON: {\"parent_summary\": str}.\n\n"
+    "CRITICAL OUTPUT RULES:\n"
+    "1. Output ONLY a single valid JSON object with EXACTLY ONE KEY: {\"parent_summary\": str}.\n"
+    "2. Do NOT create additional JSON keys (such as \"possible_reasons\", \"reasons\", \"suggestion\", or \"recap\"). "
+    "ALL content (recap, reasons with confidence levels, and practical suggestion) MUST be combined into a single continuous text string assigned strictly to \"parent_summary\".\n"
+    "3. No markdown wrappers, no code blocks (do NOT use ```json), no text before or after the JSON object.\n"
+    "4. STOP immediately after the closing JSON brace '}'.\n"
+    "5. Structure of parent_summary text:\n"
+    "   - A 2-3 sentence recap of the event and what the teen reported.\n"
+    "   - Up to three possible reasons ordered by confidence (state each reason with its confidence level in Hebrew, e.g., 'בביטחון גבוה', 'בביטחון בינוני').\n"
+    "   - One practical suggestion.\n"
+    "6. Write parent_summary strictly in natural Hebrew. Use ONLY Hebrew text (no foreign characters or words from other languages such as Chinese or English, except numbers).\n"
+    "7. Translate any technical terms to Hebrew. Do not diagnose; present reasons as possibilities, not conclusions."
 )
 
 
