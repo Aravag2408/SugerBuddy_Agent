@@ -1,7 +1,7 @@
 # Local Prototype Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
+##
 **Goal:** Build `local_prototype.py`, a zero-cost, no-cloud script that runs the CGM-event -> questionnaire -> (stubbed) agent-call flow end to end on a laptop, using real RAG text and the real structured investigation table.
 
 **Architecture:** One standalone script plus three small data files. The script calls the existing `AnomalyDetector` against a live test Nightscout site (falling back to a hardcoded anomaly), asks the 9-question Hebrew questionnaire via `input()`, does local keyword-based retrieval against the checked-in RAG text and investigation table (no LLM/embedding calls), prints the exact LLM call it *would* make in the course's required `steps` shape, and saves the full record to a local JSON file.
@@ -176,7 +176,7 @@ Expected: 68, followed by the first record (a `היפו` / `פעילות גופ�
 git add data/investigation_table.json
 git commit -m "Add structured investigation table data (parsed from טבלת דאטה.xlsx)"
 ```
-
+.
 ---
 
 ### Task 3: Anomaly retrieval with fallback
