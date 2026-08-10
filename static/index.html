@@ -175,6 +175,14 @@
       <button id="finish-button" class="btn-primary">המשך לסיום האירוע</button>
     </div>
   </section>
+
+  <section id="screen-done" class="screen">
+    <h1 class="screen-title">התהליך הושלם</h1>
+    <div class="card">
+      <p id="done-summary-text" style="white-space: pre-wrap; margin: 0;"></p>
+    </div>
+    <button id="done-finish-button" class="btn-primary">סיום</button>
+  </section>
 </div>
 
 <script>
@@ -193,6 +201,8 @@
 
   let transcript = "";
   let answers = new Array(QUESTIONS.length).fill(null);
+  let originalDescription = "";
+  let confirmationValue = null;
 
   const errorBox = document.getElementById("error-box");
   const screens = {
@@ -201,6 +211,7 @@
     followup: document.getElementById("screen-followup"),
     summary: document.getElementById("screen-summary"),
     teen: document.getElementById("screen-teen"),
+    done: document.getElementById("screen-done"),
   };
 
   function showScreen(name) {
@@ -277,6 +288,7 @@
         showError("שגיאה: " + data.error);
         return;
       }
+      originalDescription = text;
       transcript = text + "\n" + data.response;
       renderQuestions();
       renderTechTrace(document.getElementById("questions-tech-trace"), data.steps);
@@ -427,12 +439,32 @@
     el.addEventListener("click", () => {
       document.querySelectorAll(".confirm-option").forEach((o) => o.classList.remove("selected"));
       el.classList.add("selected");
+      confirmationValue = el.dataset.value;
     });
   });
 
   document.getElementById("finish-button").addEventListener("click", () => {
+    clearError();
+    if (!confirmationValue) {
+      showError("נא לבחור אם ביצעת את ההמלצה");
+      return;
+    }
+    const decisionText = parentDecisionInput.value.trim();
+    const didSentence =
+      confirmationValue === "did"
+        ? "הנער/ה מדווח/ת שביצע/ה את ההמלצה."
+        : "הנער/ה מדווח/ת שלא ביצע/ה את ההמלצה.";
+    document.getElementById("done-summary-text").textContent =
+      `האירוע: ${originalDescription} ההורה המליץ: "${decisionText}".\n${didSentence}`;
+    showScreen("done");
+  });
+
+  // --- Done screen ---
+  document.getElementById("done-finish-button").addEventListener("click", () => {
     transcript = "";
     answers = new Array(QUESTIONS.length).fill(null);
+    originalDescription = "";
+    confirmationValue = null;
     introInput.value = "";
     parentDecisionInput.value = "";
     clearError();
