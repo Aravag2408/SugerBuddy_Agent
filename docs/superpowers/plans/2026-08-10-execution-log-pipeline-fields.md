@@ -91,8 +91,10 @@ columns to exist or every real logging call will fail (silently — see the exis
 ### Task 2: `_build_log_fields` helper in `agent_pipeline.py`
 
 **Files:**
-- Modify: `agent_pipeline.py` (insert after `_retrieve_context`, i.e. after line 178, before the
-  blank lines preceding `_finalize` at line 181)
+- Modify: `agent_pipeline.py` (insert after `_retrieve_context`, i.e. after line 192, before the
+  blank lines preceding `_finalize` at line 195 — confirm exact line numbers with
+  `grep -n "_finalize\|_retrieve_context" agent_pipeline.py` before editing, since unrelated
+  upstream commits may have shifted them further)
 - Test: `tests/test_agent_pipeline_finalize.py`
 
 **Interfaces:**
@@ -197,7 +199,9 @@ git commit -m "Add _build_log_fields helper for structured execution logging"
 ### Task 3: Thread `log_fields` through `_finalize`
 
 **Files:**
-- Modify: `agent_pipeline.py:181-194` (`_finalize`)
+- Modify: `agent_pipeline.py:195-208` (`_finalize` — verify with
+  `grep -n "def _finalize" agent_pipeline.py`, since Task 2 shifts this by however many lines its
+  insertion adds)
 - Test: `tests/test_agent_pipeline_finalize.py`
 
 **Interfaces:**
@@ -302,7 +306,8 @@ git commit -m "Thread log_fields through _finalize"
 ### Task 4: Wire `log_fields` through `run_pipeline`'s three return points
 
 **Files:**
-- Modify: `agent_pipeline.py:197-238` (`run_pipeline`)
+- Modify: `agent_pipeline.py:211-252` (`run_pipeline` — verify with
+  `grep -n "def run_pipeline" agent_pipeline.py`, since Tasks 2-3 shift this further)
 - Test: `tests/test_agent_pipeline_run_pipeline.py`
 
 **Interfaces:**
