@@ -26,7 +26,7 @@ def _get_client():
     return _client
 
 
-def log_execution(prompt: str, response: str | None, steps: list[dict]) -> None:
+def log_execution(prompt: str, response: str | None, steps: list[dict], log_fields: dict) -> None:
     try:
         client = _get_client()
         client.table("execution_log").insert({
@@ -34,6 +34,17 @@ def log_execution(prompt: str, response: str | None, steps: list[dict]) -> None:
             "response": response,
             "steps": json.dumps(steps, ensure_ascii=False),
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "stage": log_fields["stage"],
+            "anomaly": log_fields["anomaly"],
+            "questionnaire_answers": log_fields["questionnaire_answers"],
+            "notes": log_fields["notes"],
+            "retrieved_context": log_fields["retrieved_context"],
+            "react_findings": log_fields["react_findings"],
+            "need_more_info": log_fields["need_more_info"],
+            "confidence_result": log_fields["confidence_result"],
+            "parent_summary": log_fields["parent_summary"],
+            "followup_question": log_fields["followup_question"],
+            "followup_answer": log_fields["followup_answer"],
         }).execute()
     except Exception as e:
         print(f"[supabase_log] failed to log execution (non-fatal): {e}")

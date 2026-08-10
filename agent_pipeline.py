@@ -192,7 +192,27 @@ def _retrieve_context(anomaly: dict, answers: dict, clients: PipelineClients) ->
     return retrieve_context_keyword(direction, answers)
 
 
-def _finalize(anomaly, answers, findings, clients: PipelineClients, prior_steps: list[dict]) -> dict:
+def _build_log_fields(stage: str, anomaly: dict, **overrides) -> dict:
+    fields = {
+        "stage": stage,
+        "anomaly": anomaly,
+        "questionnaire_answers": None,
+        "notes": None,
+        "retrieved_context": None,
+        "react_findings": None,
+        "need_more_info": None,
+        "confidence_result": None,
+        "parent_summary": None,
+        "followup_question": None,
+        "followup_answer": None,
+    }
+    fields.update(overrides)
+    return fields
+
+
+def _finalize(
+    anomaly, answers, findings, clients: PipelineClients, prior_steps: list[dict], log_fields: dict,
+) -> dict:
     confidence_result, confidence_step = run_confidence_classification(
         anomaly, answers, findings, clients.llm_client
     )
@@ -202,9 +222,12 @@ def _finalize(anomaly, answers, findings, clients: PipelineClients, prior_steps:
     parent_summary = summary_result.get("parent_summary")
     if not isinstance(parent_summary, str) or not parent_summary.strip():
         raise PipelineError("Parent Summary did not return the expected text")
+    log_fields["confidence_result"] = confidence_result
+    log_fields["parent_summary"] = parent_summary
     return {
         "response": parent_summary,
         "steps": prior_steps + [confidence_step, summary_step],
+        "log_fields": log_fields,
     }
 
 
@@ -213,7 +236,11 @@ def run_pipeline(prompt: str, clients: PipelineClients) -> dict:
 
     if state is None or state.stage not in ("questionnaire_sent", "followup_sent"):
         anomaly, steps = parse_cgm_event(prompt, clients.llm_client)
-        return {"response": format_questionnaire_prompt(anomaly), "steps": steps}
+        return {
+            "response": format_questionnaire_prompt(anomaly),
+            "steps": steps,
+            "log_fields": _build_log_fields("initial", anomaly),
+        }
 
     # The marker is client-held and comes back unvalidated on turns 2 and 3, so
     # re-validate the anomaly it carries before it reaches retrieval (where an
@@ -225,6 +252,7 @@ def run_pipeline(prompt: str, clients: PipelineClients) -> dict:
         answers, notes = parse_answers(state.reply_text)
         context = _retrieve_context(state.anomaly, answers, clients)
         result, react_step = run_react_agent(state.anomaly, answers, notes, context, clients.llm_client)
+        react_findings = result.get("findings") or []
 
         if result.get("need_more_info"):
             followup_question = result.get("followup_question")
@@ -236,9 +264,22 @@ def run_pipeline(prompt: str, clients: PipelineClients) -> dict:
                 "followup_sent", anomaly=state.anomaly, answers=answers, notes=notes,
                 followup_question=followup_question,
             )
-            return {"response": f"{followup_question}\n\n{marker}", "steps": [react_step]}
+            log_fields = _build_log_fields(
+                "questionnaire_sent", state.anomaly, questionnaire_answers=answers, notes=notes,
+                retrieved_context=context, react_findings=react_findings, need_more_info=True,
+                followup_question=followup_question,
+            )
+            return {
+                "response": f"{followup_question}\n\n{marker}",
+                "steps": [react_step],
+                "log_fields": log_fields,
+            }
 
-        return _finalize(state.anomaly, answers, result.get("findings") or [], clients, [react_step])
+        log_fields = _build_log_fields(
+            "questionnaire_sent", state.anomaly, questionnaire_answers=answers, notes=notes,
+            retrieved_context=context, react_findings=react_findings, need_more_info=False,
+        )
+        return _finalize(state.anomaly, answers, react_findings, clients, [react_step], log_fields)
 
     # state.stage == "followup_sent"
     followup_answer = state.reply_text
@@ -249,4 +290,10 @@ def run_pipeline(prompt: str, clients: PipelineClients) -> dict:
         followup={"question": state.followup_question, "answer": followup_answer},
         allow_followup=False,
     )
-    return _finalize(state.anomaly, answers, result.get("findings") or [], clients, [react_step])
+    react_findings = result.get("findings") or []
+    log_fields = _build_log_fields(
+        "followup_sent", state.anomaly, questionnaire_answers=answers, notes=state.notes,
+        retrieved_context=context, react_findings=react_findings, need_more_info=False,
+        followup_question=state.followup_question, followup_answer=followup_answer,
+    )
+    return _finalize(state.anomaly, answers, react_findings, clients, [react_step], log_fields)
