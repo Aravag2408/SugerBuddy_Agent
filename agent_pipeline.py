@@ -192,6 +192,24 @@ def _retrieve_context(anomaly: dict, answers: dict, clients: PipelineClients) ->
     return retrieve_context_keyword(direction, answers)
 
 
+def _build_log_fields(stage: str, anomaly: dict, **overrides) -> dict:
+    fields = {
+        "stage": stage,
+        "anomaly": anomaly,
+        "questionnaire_answers": None,
+        "notes": None,
+        "retrieved_context": None,
+        "react_findings": None,
+        "need_more_info": None,
+        "confidence_result": None,
+        "parent_summary": None,
+        "followup_question": None,
+        "followup_answer": None,
+    }
+    fields.update(overrides)
+    return fields
+
+
 def _finalize(anomaly, answers, findings, clients: PipelineClients, prior_steps: list[dict]) -> dict:
     confidence_result, confidence_step = run_confidence_classification(
         anomaly, answers, findings, clients.llm_client

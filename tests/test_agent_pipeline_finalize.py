@@ -7,6 +7,7 @@ from agent_pipeline import (
     CONFIDENCE_SYSTEM_PROMPT,
     PARENT_SUMMARY_SYSTEM_PROMPT,
     REACT_SYSTEM_PROMPT_BASE,
+    _build_log_fields,
     run_confidence_classification,
     run_parent_summary,
 )
@@ -68,3 +69,33 @@ def test_every_user_facing_system_prompt_specifies_hebrew(system_prompt):
     """Every stage that emits text a Hebrew-speaking teen or parent will read must
     say so — parent_summary in particular is the whole user-visible deliverable."""
     assert "Hebrew" in system_prompt
+
+
+def test_build_log_fields_defaults_all_keys_to_none():
+    fields = _build_log_fields("initial", ANOMALY)
+
+    assert fields == {
+        "stage": "initial",
+        "anomaly": ANOMALY,
+        "questionnaire_answers": None,
+        "notes": None,
+        "retrieved_context": None,
+        "react_findings": None,
+        "need_more_info": None,
+        "confidence_result": None,
+        "parent_summary": None,
+        "followup_question": None,
+        "followup_answer": None,
+    }
+
+
+def test_build_log_fields_applies_overrides_and_leaves_rest_at_default():
+    fields = _build_log_fields(
+        "questionnaire_sent", ANOMALY, questionnaire_answers=ANSWERS, need_more_info=True,
+    )
+
+    assert fields["stage"] == "questionnaire_sent"
+    assert fields["questionnaire_answers"] == ANSWERS
+    assert fields["need_more_info"] is True
+    assert fields["parent_summary"] is None
+    assert fields["followup_question"] is None
