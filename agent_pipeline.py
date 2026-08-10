@@ -210,7 +210,9 @@ def _build_log_fields(stage: str, anomaly: dict, **overrides) -> dict:
     return fields
 
 
-def _finalize(anomaly, answers, findings, clients: PipelineClients, prior_steps: list[dict]) -> dict:
+def _finalize(
+    anomaly, answers, findings, clients: PipelineClients, prior_steps: list[dict], log_fields: dict,
+) -> dict:
     confidence_result, confidence_step = run_confidence_classification(
         anomaly, answers, findings, clients.llm_client
     )
@@ -220,9 +222,12 @@ def _finalize(anomaly, answers, findings, clients: PipelineClients, prior_steps:
     parent_summary = summary_result.get("parent_summary")
     if not isinstance(parent_summary, str) or not parent_summary.strip():
         raise PipelineError("Parent Summary did not return the expected text")
+    log_fields["confidence_result"] = confidence_result
+    log_fields["parent_summary"] = parent_summary
     return {
         "response": parent_summary,
         "steps": prior_steps + [confidence_step, summary_step],
+        "log_fields": log_fields,
     }
 
 

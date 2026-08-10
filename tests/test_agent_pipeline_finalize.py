@@ -7,7 +7,9 @@ from agent_pipeline import (
     CONFIDENCE_SYSTEM_PROMPT,
     PARENT_SUMMARY_SYSTEM_PROMPT,
     REACT_SYSTEM_PROMPT_BASE,
+    PipelineClients,
     _build_log_fields,
+    _finalize,
     run_confidence_classification,
     run_parent_summary,
 )
@@ -99,3 +101,29 @@ def test_build_log_fields_applies_overrides_and_leaves_rest_at_default():
     assert fields["need_more_info"] is True
     assert fields["parent_summary"] is None
     assert fields["followup_question"] is None
+
+
+def test_finalize_fills_confidence_and_summary_into_log_fields():
+    confidence_response = json.dumps({
+        "findings": [{"cause": "exercise", "evidence": "e", "confidence": "medium", "rationale": "r"}],
+    })
+    summary_response = json.dumps({"parent_summary": "Summary text."})
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [
+        MagicMock(choices=[MagicMock(message=MagicMock(content=c))])
+        for c in (confidence_response, summary_response)
+    ]
+    clients = PipelineClients(llm_client=client)
+    log_fields = _build_log_fields(
+        "questionnaire_sent", ANOMALY, questionnaire_answers=ANSWERS, need_more_info=False,
+    )
+
+    result = _finalize(ANOMALY, ANSWERS, FINDINGS, clients, [], log_fields)
+
+    assert result["response"] == "Summary text."
+    assert result["steps"][0]["module"] == "Confidence Classification"
+    assert result["steps"][1]["module"] == "Parent Summary"
+    assert result["log_fields"]["confidence_result"]["findings"][0]["confidence"] == "medium"
+    assert result["log_fields"]["parent_summary"] == "Summary text."
+    assert result["log_fields"]["stage"] == "questionnaire_sent"  # untouched key survives
+    assert result["log_fields"] is log_fields  # mutated in place, not a copy
