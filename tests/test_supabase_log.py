@@ -1,5 +1,3 @@
-import json
-
 import supabase_log
 
 
@@ -59,14 +57,14 @@ def test_log_execution_inserts_expected_payload(monkeypatch):
     assert calls["payload"]["response"] == "response text"
     assert '"module": "CGM Event"' in calls["payload"]["steps"]
     assert calls["payload"]["stage"] == "initial"
-    assert json.loads(calls["payload"]["anomaly"]) == log_fields["anomaly"]
+    assert calls["payload"]["anomaly"] == log_fields["anomaly"]
     assert calls["payload"]["questionnaire_answers"] is None
     assert calls["payload"]["notes"] is None
     assert calls["payload"]["need_more_info"] is None
     assert calls["executed"] is True
 
 
-def test_log_execution_encodes_hebrew_jsonb_fields_without_ascii_escaping(monkeypatch):
+def test_log_execution_passes_jsonb_fields_as_native_objects_not_json_strings(monkeypatch):
     calls = {}
 
     class FakeTable:
@@ -99,11 +97,39 @@ def test_log_execution_encodes_hebrew_jsonb_fields_without_ascii_escaping(monkey
     supabase_log.log_execution("p", "r", [], log_fields)
 
     payload = calls["payload"]
-    assert "מתח" in payload["react_findings"]
-    assert "\\u" not in payload["react_findings"]
+    assert isinstance(payload["anomaly"], dict)
+    assert isinstance(payload["react_findings"], list)
+    assert isinstance(payload["confidence_result"], dict)
+    assert payload["react_findings"][0]["cause"] == "מתח"
     assert payload["notes"] == "הערה בעברית"
     assert payload["parent_summary"] == "סיכום בעברית"
     assert payload["followup_question"] == "שאלה?"
     assert payload["followup_answer"] == "תשובה"
     assert payload["need_more_info"] is False
-    assert json.loads(payload["confidence_result"])["findings"][0]["cause"] == "מתח"
+    assert payload["confidence_result"]["findings"][0]["cause"] == "מתח"
+
+
+def test_log_execution_consumes_exactly_the_keys_build_log_fields_produces(monkeypatch):
+    from agent_pipeline import _build_log_fields
+
+    calls = {}
+
+    class FakeTable:
+        def insert(self, payload):
+            calls["payload"] = payload
+            return self
+
+        def execute(self):
+            pass
+
+    class FakeClient:
+        def table(self, name):
+            return FakeTable()
+
+    monkeypatch.setattr(supabase_log, "_get_client", lambda: FakeClient())
+
+    log_fields = _build_log_fields("initial", {"type": "x"})
+    supabase_log.log_execution("p", "r", [], log_fields)
+
+    fixed_columns = {"prompt", "response", "steps", "created_at"}
+    assert set(calls["payload"].keys()) == fixed_columns | set(log_fields.keys())

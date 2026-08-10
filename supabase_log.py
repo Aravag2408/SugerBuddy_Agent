@@ -26,10 +26,6 @@ def _get_client():
     return _client
 
 
-def _dump(value):
-    return None if value is None else json.dumps(value, ensure_ascii=False)
-
-
 def log_execution(prompt: str, response: str | None, steps: list[dict], log_fields: dict) -> None:
     try:
         client = _get_client()
@@ -39,13 +35,13 @@ def log_execution(prompt: str, response: str | None, steps: list[dict], log_fiel
             "steps": json.dumps(steps, ensure_ascii=False),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "stage": log_fields["stage"],
-            "anomaly": _dump(log_fields["anomaly"]),
-            "questionnaire_answers": _dump(log_fields["questionnaire_answers"]),
+            "anomaly": log_fields["anomaly"],
+            "questionnaire_answers": log_fields["questionnaire_answers"],
             "notes": log_fields["notes"],
-            "retrieved_context": _dump(log_fields["retrieved_context"]),
-            "react_findings": _dump(log_fields["react_findings"]),
+            "retrieved_context": log_fields["retrieved_context"],
+            "react_findings": log_fields["react_findings"],
             "need_more_info": log_fields["need_more_info"],
-            "confidence_result": _dump(log_fields["confidence_result"]),
+            "confidence_result": log_fields["confidence_result"],
             "parent_summary": log_fields["parent_summary"],
             "followup_question": log_fields["followup_question"],
             "followup_answer": log_fields["followup_answer"],

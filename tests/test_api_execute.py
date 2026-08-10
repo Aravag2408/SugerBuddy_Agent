@@ -296,6 +296,12 @@ def test_two_real_execute_calls_run_the_real_pipeline_end_to_end(monkeypatch):
     assert react_payload["reference_text"]
 
     assert len(logged) == 2  # both turns were handed to the audit log
+    assert logged[0][3]["stage"] == "initial"
+    assert logged[0][3]["anomaly"]["direction"] == "high"
+    assert logged[1][3]["stage"] == "questionnaire_sent"
+    assert logged[1][3]["need_more_info"] is False
+    assert logged[1][3]["parent_summary"] == "סיכום סופי להורה."
+    assert logged[1][3]["retrieved_context"]["rag_snippet"]
 
 
 def test_clients_are_built_lazily_and_never_at_import_time(monkeypatch):
