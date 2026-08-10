@@ -16,6 +16,22 @@ def test_execute_success_returns_ok_shape(monkeypatch):
     fake_result = {
         "response": "some response text",
         "steps": [{"module": "CGM Event", "prompt": {"system_prompt": "s", "user_prompt": "u"}, "response": {}}],
+        "log_fields": {
+            "stage": "initial",
+            "anomaly": {
+                "type": "glucose_extreme", "severity": "urgent", "direction": "high",
+                "message": "m", "details": {},
+            },
+            "questionnaire_answers": None,
+            "notes": None,
+            "retrieved_context": None,
+            "react_findings": None,
+            "need_more_info": None,
+            "confidence_result": None,
+            "parent_summary": None,
+            "followup_question": None,
+            "followup_answer": None,
+        },
     }
     monkeypatch.setattr(api_index, "_get_clients", lambda: MagicMock())
     monkeypatch.setattr(api_index, "run_pipeline", lambda prompt, clients: fake_result)
@@ -31,6 +47,34 @@ def test_execute_success_returns_ok_shape(monkeypatch):
         "response": "some response text",
         "steps": fake_result["steps"],
     }
+
+
+def test_execute_success_passes_log_fields_to_log_execution(monkeypatch):
+    fake_log_fields = {
+        "stage": "initial",
+        "anomaly": {
+            "type": "glucose_extreme", "severity": "urgent", "direction": "high",
+            "message": "m", "details": {},
+        },
+        "questionnaire_answers": None,
+        "notes": None,
+        "retrieved_context": None,
+        "react_findings": None,
+        "need_more_info": None,
+        "confidence_result": None,
+        "parent_summary": None,
+        "followup_question": None,
+        "followup_answer": None,
+    }
+    fake_result = {"response": "r", "steps": [], "log_fields": fake_log_fields}
+    monkeypatch.setattr(api_index, "_get_clients", lambda: MagicMock())
+    monkeypatch.setattr(api_index, "run_pipeline", lambda prompt, clients: fake_result)
+    logged_calls = []
+    monkeypatch.setattr(api_index, "log_execution", lambda *a: logged_calls.append(a))
+
+    client.post("/api/execute", json={"prompt": "test prompt"})
+
+    assert logged_calls == [("test prompt", "r", [], fake_log_fields)]
 
 
 def test_execute_pipeline_error_returns_error_shape(monkeypatch):
@@ -144,7 +188,17 @@ def test_execute_prompt_exactly_at_limit_is_accepted(monkeypatch):
     MAX_PROMPT_CHARS still runs."""
     monkeypatch.setattr(api_index, "_get_clients", lambda: MagicMock())
     monkeypatch.setattr(
-        api_index, "run_pipeline", lambda prompt, clients: {"response": "ok", "steps": []}
+        api_index, "run_pipeline",
+        lambda prompt, clients: {
+            "response": "ok",
+            "steps": [],
+            "log_fields": {
+                "stage": "initial", "anomaly": {}, "questionnaire_answers": None, "notes": None,
+                "retrieved_context": None, "react_findings": None, "need_more_info": None,
+                "confidence_result": None, "parent_summary": None, "followup_question": None,
+                "followup_answer": None,
+            },
+        },
     )
     monkeypatch.setattr(api_index, "log_execution", lambda *a, **kw: None)
 

@@ -489,12 +489,13 @@ async def execute(request: Request):
         result = run_pipeline(prompt, clients)
         response_text = result["response"]
         steps = result["steps"]
+        log_fields = result["log_fields"]
     except PipelineError as e:
         return JSONResponse({"status": "error", "error": str(e), "response": None, "steps": []})
     except Exception as e:
         return JSONResponse({"status": "error", "error": f"unexpected error: {e}", "response": None, "steps": []})
 
-    log_execution(prompt, response_text, steps)
+    log_execution(prompt, response_text, steps, log_fields)
     return JSONResponse(
         {"status": "ok", "error": None, "response": response_text, "steps": steps}
     )
