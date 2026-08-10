@@ -39,6 +39,19 @@ def test_turn1_fresh_prompt_returns_questionnaire():
     assert "SUGARBUDDY_CONTEXT" in result["response"]
     assert "1." in result["response"] and "10." in result["response"]
     assert result["steps"] == []
+    assert result["log_fields"] == {
+        "stage": "initial",
+        "anomaly": ANOMALY,
+        "questionnaire_answers": None,
+        "notes": None,
+        "retrieved_context": None,
+        "react_findings": None,
+        "need_more_info": None,
+        "confidence_result": None,
+        "parent_summary": None,
+        "followup_question": None,
+        "followup_answer": None,
+    }
 
 
 def test_turn2_no_followup_returns_final_summary(monkeypatch):
@@ -68,6 +81,21 @@ def test_turn2_no_followup_returns_final_summary(monkeypatch):
     assert [s["module"] for s in result["steps"]] == [
         "ReAct Agent", "Confidence Classification", "Parent Summary",
     ]
+    assert result["log_fields"] == {
+        "stage": "questionnaire_sent",
+        "anomaly": ANOMALY,
+        "questionnaire_answers": dict.fromkeys(ALL_TEN_ANSWERS, True),
+        "notes": "",
+        "retrieved_context": {"table_matches": [], "rag_snippet": ""},
+        "react_findings": [{"cause": "exercise", "evidence": "e", "source": "answers"}],
+        "need_more_info": False,
+        "confidence_result": {
+            "findings": [{"cause": "exercise", "evidence": "e", "confidence": "medium", "rationale": "r"}],
+        },
+        "parent_summary": "Event recap. Possible reason: exercise (medium confidence). Suggestion: hydrate.",
+        "followup_question": None,
+        "followup_answer": None,
+    }
 
 
 def test_turn2_with_followup_returns_question_not_summary(monkeypatch):
@@ -95,6 +123,19 @@ def test_turn2_with_followup_returns_question_not_summary(monkeypatch):
     followup_state = extract_conversation_state(result["response"])
     assert followup_state is not None
     assert followup_state.stage == "followup_sent"
+    assert result["log_fields"] == {
+        "stage": "questionnaire_sent",
+        "anomaly": ANOMALY,
+        "questionnaire_answers": dict.fromkeys(ALL_TEN_ANSWERS, True),
+        "notes": "",
+        "retrieved_context": {"table_matches": [], "rag_snippet": ""},
+        "react_findings": [],
+        "need_more_info": True,
+        "confidence_result": None,
+        "parent_summary": None,
+        "followup_question": "כמה זמן אחרי האוכל מדדת?",
+        "followup_answer": None,
+    }
 
 
 def test_turn3_after_followup_returns_final_summary(monkeypatch):
@@ -125,6 +166,21 @@ def test_turn3_after_followup_returns_final_summary(monkeypatch):
     assert [s["module"] for s in result["steps"]] == [
         "ReAct Agent", "Confidence Classification", "Parent Summary",
     ]
+    assert result["log_fields"] == {
+        "stage": "followup_sent",
+        "anomaly": ANOMALY,
+        "questionnaire_answers": ALL_TEN_ANSWERS,
+        "notes": "",
+        "retrieved_context": {"table_matches": [], "rag_snippet": ""},
+        "react_findings": [{"cause": "late meal", "evidence": "e", "source": "answers"}],
+        "need_more_info": False,
+        "confidence_result": {
+            "findings": [{"cause": "late meal", "evidence": "e", "confidence": "high", "rationale": "r"}],
+        },
+        "parent_summary": "Final summary text.",
+        "followup_question": "כמה זמן אחרי האוכל מדדת?",
+        "followup_answer": "כעשר דקות אחרי",
+    }
 
 
 def test_turn2_uses_pinecone_when_both_clients_are_set(monkeypatch):
@@ -356,3 +412,6 @@ def test_chained_real_transcript_reaches_final_summary(monkeypatch):
     assert react_payload["questionnaire_answers"] == dict.fromkeys(ALL_TEN_ANSWERS, True)
     assert react_payload["followup_question"] == "כמה זמן אחרי האוכל מדדת?"
     assert react_payload["followup_answer"] == "כעשר דקות אחרי"
+    assert turn3["log_fields"]["followup_question"] == "כמה זמן אחרי האוכל מדדת?"
+    assert turn3["log_fields"]["followup_answer"] == "כעשר דקות אחרי"
+    assert turn3["log_fields"]["parent_summary"] == "Chained final summary."
